@@ -1,0 +1,135 @@
+    <!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Açaí - Controle Completo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- TELA 0: INICIAL (LANDING PAGE) -->
+    <div id="screen-landing" class="screen active">
+        <div class="landing-card">
+            <h1>🍇 Sistema Açaí PDV</h1>
+            <p>Selecione uma opção para continuar no sistema:</p>
+            <div class="landing-buttons">
+                <button class="btn btn-primary btn-lg" onclick="solicitarAberturaCaixa()">🖥️ Ir para Frente de Caixa</button>
+                <button class="btn btn-secondary btn-lg" onclick="trocarTelaDirect('historico')">📊 Consultar Histórico</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TELA PRINCIPAL DO SISTEMA (APP) -->
+    <div id="screen-app" class="screen">
+        <!-- BARRA DE NAVEGAÇÃO -->
+        <nav class="navbar">
+            <div class="navbar-brand" onclick="voltarTelaInicial()" style="cursor:pointer;" title="Voltar à tela inicial">
+                🍇 Açaí PDV <small id="status-caixa-badge" class="badge-caixa">Caixa Fechado</small>
+            </div>
+            <ul class="navbar-menu">
+                <li><a href="#" id="nav-pdv" class="active" onclick="trocarAba('pdv')">🖥️ Frente de Caixa</a></li>
+                <li><a href="#" id="nav-historico" onclick="trocarAba('historico')">📊 Histórico</a></li>
+                <li><a href="#" id="nav-cardapio" onclick="trocarAba('cardapio')">🍧 Cardápio</a></li>
+                <li><a href="#" id="nav-caixa" onclick="trocarAba('caixa')">💰 Fechamento</a></li>
+                <li><a href="#" id="nav-impressoras" onclick="trocarAba('impressoras')">🖨️ Impressoras</a></li>
+                <li><a href="#" id="nav-usuarios" onclick="trocarAba('usuarios')">👤 Usuários</a></li>
+            </ul>
+        </nav>
+
+        <div class="app-container">
+            <!-- ABA: FRENTE DE CAIXA -->
+            <div id="view-pdv" class="view-section active">
+                <div class="sidebar-left">
+                    <div class="panel-header">Comandas Abertas</div>
+                    <div class="panel-content"><ul class="item-list" id="lista-abertas"></ul></div>
+                </div>
+
+                <div class="main-panel">
+                    <div class="top-bar">
+                        <button class="btn btn-primary" onclick="abrirNovaComandaRapida()">+ Criar / Abrir Comanda</button>
+                        <button class="btn btn-secondary" onclick="voltarTelaInicial()">🏠 Tela Inicial</button>
+                    </div>
+                    <div class="grid-header">Mapa de Comandas (1 ao 50)</div>
+                    <div class="comandas-grid" id="comandas-grid"></div>
+                </div>
+
+                <div class="sidebar-right">
+                    <div class="panel-header">Últimas 5 Pagas</div>
+                    <div class="panel-content"><ul class="item-list" id="lista-pagas"></ul></div>
+                </div>
+            </div>
+
+            <!-- OUTRAS ABAS -->
+            <div id="view-historico" class="view-section"><div class="view-content-box"><h2>📊 Histórico de Vendas</h2><div id="historico-list" style="margin-top:15px;"></div></div></div>
+            <div id="view-cardapio" class="view-section"><div class="view-content-box"><h2>🍧 Cardápio / Produtos</h2></div></div>
+            <div id="view-caixa" class="view-section"><div class="view-content-box"><h2>💰 Fechamento de Caixa</h2><div id="caixa-resumo-box"></div></div></div>
+            <div id="view-impressoras" class="view-section"><div class="view-content-box"><h2>🖨️ Impressoras</h2></div></div>
+            <div id="view-usuarios" class="view-section"><div class="view-content-box"><h2>👤 Usuários</h2></div></div>
+        </div>
+    </div>
+
+    <!-- MODAL: ABERTURA DE CAIXA -->
+    <div class="modal-overlay" id="modal-abertura-caixa">
+        <div class="modal-container modal-sm">
+            <div class="modal-header">
+                <h2>💰 Abertura de Caixa</h2>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 10px;">Informe o valor do fundo de caixa (troco inicial):</p>
+                <input type="number" step="0.01" id="input-fundo-caixa" placeholder="R$ 0,00" style="width:100%; padding:10px; font-size:16px;">
+                <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="confirmarAberturaCaixa()">Abrir Caixa e Entrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: DETALHES DA COMANDA -->
+    <div class="modal-overlay" id="modal-comanda">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modal-titulo">Comanda #00</h2>
+                <button class="close-btn" onclick="fecharModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="quick-products" id="quick-products-bar"></div>
+
+                <div class="add-item-box">
+                    <input type="text" id="input-item-modal" placeholder="Digite código (ex: 101) ou nome do produto...">
+                    <button class="btn btn-primary" onclick="adicionarItemPorPesquisa()">+ Adicionar</button>
+                </div>
+
+                <table class="table-items">
+                    <thead>
+                        <tr>
+                            <th>Item / Obs</th>
+                            <th style="width: 90px;">Qtd</th>
+                            <th>Unit.</th>
+                            <th>Total</th>
+                            <th style="width: 90px; text-align:center;">Cozinha</th>
+                            <th style="width: 40px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="modal-tabela-itens"></tbody>
+                </table>
+
+                <div class="financial-summary">
+                    <div class="summary-row"><span>Subtotal:</span><span id="summary-subtotal">R$ 0,00</span></div>
+                    <div class="summary-row"><span>Desconto:</span><span id="summary-desconto">R$ 0,00</span></div>
+                    <div class="summary-row"><span>Adiantamento:</span><span id="summary-adiantamento">R$ 0,00</span></div>
+                    <div class="summary-row total"><span>Total a Pagar:</span><span id="summary-total">R$ 0,00</span></div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-pay" onclick="receberComandaAtual()">Receber / Fechar</button>
+                    <button class="btn btn-print" onclick="imprimirCozinha()">🖨️ Imprimir Pendentes</button>
+                    <button class="btn btn-action" onclick="aplicarDesconto()">Desconto</button>
+                    <button class="btn btn-action" onclick="adiantarValor()">Adiantar</button>
+                    <button class="btn btn-secondary" onclick="fecharModal()">Sair</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

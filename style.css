@@ -1,0 +1,101 @@
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+body { display: flex; flex-direction: column; height: 100vh; background-color: #f4f5f7; color: #333; overflow: hidden; }
+
+/* TELAS */
+.screen { display: none; width: 100vw; height: 100vh; }
+.screen.active { display: flex; flex-direction: column; }
+
+/* LANDING PAGE */
+#screen-landing { background: linear-gradient(135deg, #3b113c 0%, #4a154b 100%); justify-content: center; align-items: center; }
+.landing-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); text-align: center; max-width: 450px; width: 90%; }
+.landing-card h1 { color: #4a154b; margin-bottom: 10px; }
+.landing-card p { color: #666; margin-bottom: 25px; }
+.landing-buttons { display: flex; flex-direction: column; gap: 15px; }
+.btn-lg { padding: 15px; font-size: 16px; border-radius: 8px; }
+
+/* NAVBAR */
+.navbar { background-color: #3b113c; color: white; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; height: 55px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 10; }
+.navbar-brand { font-size: 18px; font-weight: bold; display: flex; align-items: center; gap: 10px; }
+.badge-caixa { font-size: 11px; background: #c62828; padding: 3px 8px; border-radius: 12px; }
+.badge-caixa.open { background: #2e7d32; }
+.navbar-menu { display: flex; list-style: none; gap: 5px; height: 100%; }
+.navbar-menu a { color: #d1c4e9; text-decoration: none; padding: 0 15px; height: 100%; display: flex; align-items: center; font-size: 13px; font-weight: 500; border-bottom: 3px solid transparent; }
+.navbar-menu a:hover, .navbar-menu a.active { color: white; background-color: rgba(255, 255, 255, 0.08); border-bottom-color: #ab47bc; }
+
+/* LAYOUT & VIEWS */
+.app-container { display: flex; flex: 1; height: calc(100vh - 55px); overflow: hidden; }
+.view-section { display: none; width: 100%; height: 100%; }
+.view-section.active { display: flex; }
+
+.sidebar-left, .sidebar-right { width: 280px; background-color: #ffffff; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; }
+.sidebar-right { border-right: none; border-left: 1px solid #e0e0e0; }
+.panel-header { padding: 12px 15px; background-color: #4a154b; color: white; font-size: 15px; font-weight: bold; text-align: center; }
+.panel-content { padding: 15px; flex: 1; overflow-y: auto; }
+
+.main-panel { flex: 1; display: flex; flex-direction: column; padding: 20px; overflow-y: auto; }
+.top-bar { display: flex; gap: 15px; margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+/* BUTTONS */
+.btn { padding: 8px 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 13px; }
+.btn-primary { background-color: #2e7d32; color: white; }
+.btn-primary:hover { background-color: #1b5e20; }
+.btn-pay { background-color: #0288d1; color: white; }
+.btn-secondary { background-color: #616161; color: white; }
+.btn-print { background-color: #ef6c00; color: white; }
+.btn-action { background-color: #7b1fa2; color: white; }
+.btn-danger { background-color: #c62828; color: white; }
+.btn-sm { padding: 2px 6px; font-size: 11px; }
+
+/* GRID COMANDAS */
+.grid-header { font-size: 18px; font-weight: bold; margin-bottom: 12px; color: #4a154b; }
+.comandas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 10px; }
+.comanda-card { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; border: 2px solid transparent; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative; }
+.comanda-livre { background-color: #e8f5e9; color: #2e7d32; border-color: #a5d6a7; }
+.comanda-ocupada { background-color: #ffebee; color: #c62828; border-color: #ef9a9a; }
+.comanda-card .numero { font-size: 20px; }
+.comanda-card .valor { font-size: 11px; margin-top: 4px; }
+
+/* INDICADOR DE IMPRESSÃO PENDENTE NA COMANDA */
+.comanda-card.has-pending::after { content: "🔴"; position: absolute; top: 4px; right: 4px; font-size: 10px; }
+
+/* LISTAS LATERAIS */
+.item-list { list-style: none; }
+.item-card { background: #f9f9f9; border: 1px solid #eee; padding: 10px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+.item-card.pago { border-left: 4px solid #2e7d32; cursor: default; }
+.item-card.aberto { border-left: 4px solid #c62828; }
+.info-comanda { display: flex; flex-direction: column; }
+.info-comanda .titulo { font-weight: bold; font-size: 14px; }
+.info-comanda .subtext { font-size: 12px; color: #666; }
+.valor-destaque { font-weight: bold; color: #333; }
+
+/* TABELA E MODAL */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+.modal-overlay.active { display: flex; }
+.modal-container { background: white; width: 750px; max-width: 95%; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: flex; flex-direction: column; max-height: 90vh; }
+.modal-sm { width: 400px; }
+.modal-header { background: #4a154b; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+.close-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+
+.quick-products { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+.add-item-box { display: flex; gap: 10px; margin-bottom: 15px; background: #f4f5f7; padding: 10px; border-radius: 6px; }
+.add-item-box input { flex: 1; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; }
+
+.table-items { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+.table-items th, .table-items td { padding: 8px 10px; border-bottom: 1px solid #eee; text-align: left; }
+.table-items th { background: #fafafa; font-size: 13px; color: #666; }
+
+/* DESTAQUES DE STATUS DE IMPRESSÃO DE ITEM */
+.status-badge { font-size: 10px; padding: 3px 6px; border-radius: 4px; font-weight: bold; text-align: center; display: inline-block; }
+.badge-no-kitchen { background: #e0e0e0; color: #666; }
+.badge-pending { background: #ffe0b2; color: #e65100; border: 1px solid #ffb74d; }
+.badge-printed { background: #c8e6c9; color: #2e7d32; }
+
+.item-obs { font-size: 11px; color: #7b1fa2; font-style: italic; display: block; margin-top: 2px; }
+
+.financial-summary { background: #f4f5f7; padding: 12px; border-radius: 6px; margin-bottom: 15px; display: flex; flex-direction: column; gap: 5px; text-align: right; }
+.summary-row { display: flex; justify-content: space-between; font-size: 14px; }
+.summary-row.total { font-size: 18px; font-weight: bold; color: #4a154b; border-top: 1px solid #ccc; padding-top: 5px; margin-top: 5px; }
+
+.modal-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.view-content-box { padding: 30px; width: 100%; overflow-y: auto; }
