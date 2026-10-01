@@ -11,11 +11,12 @@
     <!-- TELA 0: INICIAL (LANDING PAGE) -->
     <div id="screen-landing" class="screen active">
         <div class="landing-card">
-            <h1>🍇 Sistema Açaí PDV</h1>
+            <h1>Sistema Açaí PDV</h1>
             <p>Selecione uma opção para continuar no sistema:</p>
             <div class="landing-buttons">
-                <button class="btn btn-primary btn-lg" onclick="solicitarAberturaCaixa()">🖥️ Ir para Frente de Caixa</button>
-                <button class="btn btn-secondary btn-lg" onclick="trocarTelaDirect('historico')">📊 Consultar Histórico</button>
+                <button class="btn btn-primary btn-lg" onclick="solicitarAberturaCaixa()">Ir para Frente de Caixa</button>
+                <button class="btn btn-secondary btn-lg" onclick="trocarTelaDirect('cardapio')">Cadastrar produtos</button>
+                <button class="btn btn-secondary btn-lg" onclick="trocarTelaDirect('historico')">Consultar Histórico</button>
             </div>
         </div>
     </div>
@@ -25,15 +26,15 @@
         <!-- BARRA DE NAVEGAÇÃO -->
         <nav class="navbar">
             <div class="navbar-brand" onclick="voltarTelaInicial()" style="cursor:pointer;" title="Voltar à tela inicial">
-                🍇 Açaí PDV <small id="status-caixa-badge" class="badge-caixa">Caixa Fechado</small>
+                Açaí PDV <small id="status-caixa-badge" class="badge-caixa">Caixa Fechado</small>
             </div>
             <ul class="navbar-menu">
-                <li><a href="#" id="nav-pdv" class="active" onclick="trocarAba('pdv')">🖥️ Frente de Caixa</a></li>
-                <li><a href="#" id="nav-historico" onclick="trocarAba('historico')">📊 Histórico</a></li>
-                <li><a href="#" id="nav-cardapio" onclick="trocarAba('cardapio')">🍧 Cardápio</a></li>
-                <li><a href="#" id="nav-caixa" onclick="trocarAba('caixa')">💰 Fechamento</a></li>
-                <li><a href="#" id="nav-impressoras" onclick="trocarAba('impressoras')">🖨️ Impressoras</a></li>
-                <li><a href="#" id="nav-usuarios" onclick="trocarAba('usuarios')">👤 Usuários</a></li>
+                <li><a href="#" id="nav-pdv" class="active" onclick="trocarAba('pdv')">Frente de Caixa</a></li>
+                <li><a href="#" id="nav-historico" onclick="trocarAba('historico')">Histórico</a></li>
+                <li><a href="#" id="nav-cardapio" onclick="trocarAba('cardapio')">Produtos</a></li>
+                <li><a href="#" id="nav-caixa" onclick="trocarAba('caixa')">Fechamento</a></li>
+                <li><a href="#" id="nav-impressoras" onclick="trocarAba('impressoras')">Impressoras</a></li>
+                <li><a href="#" id="nav-usuarios" onclick="trocarAba('usuarios')">Usuários</a></li>
             </ul>
         </nav>
 
@@ -48,24 +49,41 @@
                 <div class="main-panel">
                     <div class="top-bar">
                         <button class="btn btn-primary" onclick="abrirNovaComandaRapida()">+ Criar / Abrir Comanda</button>
-                        <button class="btn btn-secondary" onclick="voltarTelaInicial()">🏠 Tela Inicial</button>
+                        <select id="filtro-comandas" aria-label="Filtrar comandas" onchange="renderizarGrid()"><option value="todas">Todas as comandas</option><option value="abertas">Em consumo</option><option value="livres">Livres</option></select>
                     </div>
                     <div class="grid-header">Mapa de Comandas (1 ao 50)</div>
                     <div class="comandas-grid" id="comandas-grid"></div>
                 </div>
 
                 <div class="sidebar-right">
-                    <div class="panel-header">Últimas 5 Pagas</div>
+                    <div class="panel-header">Últimas vendas</div>
                     <div class="panel-content"><ul class="item-list" id="lista-pagas"></ul></div>
                 </div>
             </div>
 
             <!-- OUTRAS ABAS -->
-            <div id="view-historico" class="view-section"><div class="view-content-box"><h2>📊 Histórico de Vendas</h2><div id="historico-list" style="margin-top:15px;"></div></div></div>
-            <div id="view-cardapio" class="view-section"><div class="view-content-box"><h2>🍧 Cardápio / Produtos</h2></div></div>
-            <div id="view-caixa" class="view-section"><div class="view-content-box"><h2>💰 Fechamento de Caixa</h2><div id="caixa-resumo-box"></div></div></div>
-            <div id="view-impressoras" class="view-section"><div class="view-content-box"><h2>🖨️ Impressoras</h2></div></div>
-            <div id="view-usuarios" class="view-section"><div class="view-content-box"><h2>👤 Usuários</h2></div></div>
+            <div id="view-historico" class="view-section"><div class="view-content-box"><h2>Histórico de Vendas</h2><div id="historico-list" style="margin-top:15px;"></div></div></div>
+            <div id="view-cardapio" class="view-section"><div class="view-content-box">
+ <div class="products-heading"><div><h2>Produtos</h2><p class="field-help">Cadastre e organize os produtos da loja.</p></div><button class="btn btn-primary" onclick="novoProduto()">+ Novo produto</button></div>
+ <p id="produtos-conexao" role="status" class="field-help"></p><button id="produtos-reconectar" class="btn btn-secondary" hidden onclick="carregarProdutos()">Tentar conectar novamente</button>
+ <div class="products-layout">
+  <section class="products-list-panel" aria-label="Produtos cadastrados"><input id="produto-busca" type="search" placeholder="Buscar nome, código ou código de barras" aria-label="Buscar produtos" oninput="renderizarProdutos()"><div class="table-scroll"><table class="table-items"><thead><tr><th>Código</th><th>Produto</th><th>Preço</th><th>Status</th><th></th></tr></thead><tbody id="produtos-lista"></tbody></table></div></section>
+  <form id="produto-form" class="product-form" onsubmit="event.preventDefault(); salvarProduto()">
+   <h3 id="produto-form-titulo">Novo produto</h3><input id="produto-id" type="hidden">
+   <label for="produto-nome">Nome do produto *</label><input id="produto-nome" maxlength="120" required placeholder="Ex.: Açaí por kg">
+   <div class="product-fields"><div><label for="produto-codigo">Código *</label><input id="produto-codigo" maxlength="40" required placeholder="Ex.: 103"></div><div><label for="produto-unidade">Forma de venda *</label><select id="produto-unidade" onchange="atualizarRotuloPreco()"><option value="UN">Unidade (UN)</option><option value="KG">Quilograma (KG)</option></select></div></div>
+   <label id="produto-preco-label" for="produto-preco">Preço por unidade (R$) *</label><input id="produto-preco" type="number" min="0" max="999999.99" step="0.01" required placeholder="0,00">
+   <label for="produto-categoria">Categoria <span class="optional">(opcional)</span></label><input id="produto-categoria" maxlength="80" placeholder="Ex.: Açaí, bebidas, adicionais">
+   <label for="produto-barras">Código de barras <span class="optional">(opcional)</span></label><input id="produto-barras" maxlength="80" placeholder="Digite ou leia o código">
+   <label class="checkbox-label"><input id="produto-cozinha" type="checkbox"> Enviar para a cozinha</label>
+   <label class="checkbox-label"><input id="produto-ativo" type="checkbox" checked> Disponível para venda</label>
+   <p id="produto-erro" class="form-error" role="alert"></p><div class="product-form-actions"><button id="produto-salvar" class="btn btn-primary" type="submit">Salvar produto</button><button class="btn btn-secondary" type="button" onclick="novoProduto()">Limpar</button></div>
+  </form>
+ </div>
+</div></div>
+            <div id="view-caixa" class="view-section"><div class="view-content-box"><h2>Fechamento de Caixa</h2><div id="caixa-resumo-box"></div></div></div>
+            <div id="view-impressoras" class="view-section"><div class="view-content-box"><h2>Impressoras</h2></div></div>
+            <div id="view-usuarios" class="view-section"><div class="view-content-box"><h2>Usuários</h2></div></div>
         </div>
     </div>
 
@@ -73,7 +91,7 @@
     <div class="modal-overlay" id="modal-abertura-caixa">
         <div class="modal-container modal-sm">
             <div class="modal-header">
-                <h2>💰 Abertura de Caixa</h2>
+                <h2>Abertura de Caixa</h2>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 10px;">Informe o valor do fundo de caixa (troco inicial):</p>
@@ -84,7 +102,7 @@
     </div>
 
     <!-- MODAL: DETALHES DA COMANDA -->
-    <div class="modal-overlay" id="modal-comanda">
+    <div class="modal-overlay" id="modal-comanda" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
         <div class="modal-container">
             <div class="modal-header">
                 <h2 id="modal-titulo">Comanda #00</h2>
@@ -94,10 +112,12 @@
                 <div class="quick-products" id="quick-products-bar"></div>
 
                 <div class="add-item-box">
-                    <input type="text" id="input-item-modal" placeholder="Digite código (ex: 101) ou nome do produto...">
+                    <input type="text" id="input-item-modal" placeholder="Buscar por código ou nome do produto" autocomplete="off" aria-label="Buscar produto na comanda" aria-controls="busca-produtos-resultados" oninput="pesquisarProdutosComanda()">
                     <button class="btn btn-primary" onclick="adicionarItemPorPesquisa()">+ Adicionar</button>
                 </div>
 
+                <div id="busca-produtos-resultados" class="search-results" hidden aria-label="Produtos encontrados"></div>
+                <p id="busca-produtos-status" class="field-help" role="status" hidden></p>
                 <table class="table-items">
                     <thead>
                         <tr>
@@ -120,9 +140,9 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button class="btn btn-pay" onclick="receberComandaAtual()">Receber / Fechar</button>
-                    <button class="btn btn-print" onclick="imprimirCozinha()">🖨️ Imprimir Pendentes</button>
-                    <button class="btn btn-action" onclick="aplicarDesconto()">Desconto</button>
+                    <button class="btn btn-pay" onclick="receberComandaAtual()">Efetuar pagamento</button>
+                    <button class="btn btn-print" onclick="imprimirCozinha()">Imprimir Pendentes</button>
+                    <button class="btn btn-action" onclick="abrirTransferencia()">Transferir itens</button>
                     <button class="btn btn-action" onclick="adiantarValor()">Adiantar</button>
                     <button class="btn btn-secondary" onclick="fecharModal()">Sair</button>
                 </div>
@@ -130,6 +150,34 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="modal-pagamento" role="dialog" aria-modal="true" aria-labelledby="titulo-pagamento">
+        <div class="modal-container modal-sm">
+            <div class="modal-header"><h2 id="titulo-pagamento">Pagamento</h2><button class="close-btn" aria-label="Fechar pagamento" onclick="fecharJanela('modal-pagamento')">&times;</button></div>
+            <form class="modal-body" onsubmit="event.preventDefault(); confirmarPagamento()">
+                <div class="summary-row"><span>Subtotal</span><strong id="pag-subtotal"></strong></div>
+                <div class="summary-row"><span>Adiantamento</span><span id="pag-adiantamento"></span></div>
+                <label for="pag-desconto">Desconto <span class="optional">(opcional)</span></label>
+                <div class="field-row"><select id="pag-tipo-desconto" aria-label="Tipo de desconto" onchange="atualizarPagamento()"><option value="valor">R$</option><option value="percentual">%</option></select><input id="pag-desconto" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></div>
+                <p class="payment-label">Formas de pagamento</p><p class="field-help">Preencha os valores nas formas utilizadas. Você pode combinar várias.</p><div class="payment-grid"><label class="payment-card" for="pag-valor-0"><span>Dinheiro</span><div class="payment-value"><span>R$</span><input id="pag-valor-0" data-metodo="Dinheiro" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Dinheiro" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-1"><span>Pix</span><div class="payment-value"><span>R$</span><input id="pag-valor-1" data-metodo="Pix" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Pix" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-2"><span>Débito</span><div class="payment-value"><span>R$</span><input id="pag-valor-2" data-metodo="Débito" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Débito" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-3"><span>Crédito</span><div class="payment-value"><span>R$</span><input id="pag-valor-3" data-metodo="Crédito" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Crédito" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-4"><span>Crediário</span><div class="payment-value"><span>R$</span><input id="pag-valor-4" data-metodo="Crediário" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Crediário" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-5"><span>Voucher</span><div class="payment-value"><span>R$</span><input id="pag-valor-5" data-metodo="Voucher" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Voucher" oninput="atualizarPagamento()"></div></label></div><div id="pag-cliente-box" hidden><label for="pag-cliente">Cliente do crediário</label><input id="pag-cliente" type="text" maxlength="120" placeholder="Nome do cliente"></div><div class="payment-progress"><div class="summary-row"><span>Valor informado</span><strong id="pag-informado"></strong></div><div class="summary-row"><span>Falta pagar</span><strong id="pag-restante"></strong></div><div class="summary-row"><span>Troco em dinheiro</span><strong id="pag-troco"></strong></div></div><div class="summary-row total payment-total"><span>Total a pagar</span><strong id="pag-total"></strong></div>
+                <p id="pag-erro" class="form-error" role="alert"></p>
+                <button class="btn btn-pay full-width" type="submit">Confirmar pagamento</button>
+            </form>
+        </div>
+    </div>
+    <div class="modal-overlay" id="modal-transferencia" role="dialog" aria-modal="true" aria-labelledby="titulo-transferencia">
+        <div class="modal-container modal-sm">
+            <div class="modal-header"><h2 id="titulo-transferencia">Transferir itens</h2><button class="close-btn" aria-label="Fechar transferência" onclick="fecharJanela('modal-transferencia')">&times;</button></div>
+            <form class="modal-body" onsubmit="event.preventDefault(); confirmarTransferencia()">
+                <p>Selecione a quantidade de cada item que deseja mover.</p>
+                <div id="transferencia-itens"></div>
+                <label for="transferencia-destino">Cartão / comanda de destino</label><select id="transferencia-destino" required></select>
+                <p class="field-help">Observações e status da cozinha acompanham os itens. Descontos e adiantamentos permanecem na origem.</p>
+                <p id="transferencia-erro" class="form-error" role="alert"></p>
+                <button class="btn btn-primary full-width" type="submit">Confirmar transferência</button>
+            </form>
+        </div>
+    </div>
+    <div id="toast" role="status" class="toast" hidden></div>
     <script src="script.js"></script>
 </body>
 </html>
