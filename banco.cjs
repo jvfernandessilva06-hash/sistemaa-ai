@@ -101,13 +101,51 @@ CREATE TABLE IF NOT EXISTS fila_impressao (
  tentativas INTEGER NOT NULL DEFAULT 0,
  ultimo_erro TEXT NOT NULL DEFAULT '',
  status TEXT NOT NULL DEFAULT 'pendente' CHECK(status IN ('pendente','impresso','falhou','descartado'))
-);`);
+);
+CREATE TABLE IF NOT EXISTS movimentos_caixa (
+ id INTEGER PRIMARY KEY,
+ caixa_id INTEGER NOT NULL REFERENCES caixas(id),
+ usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+ tipo TEXT NOT NULL CHECK(tipo IN ('sangria','suprimento')),
+ valor_centavos INTEGER NOT NULL CHECK(valor_centavos > 0),
+ motivo TEXT NOT NULL DEFAULT '',
+ data_hora TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS crediario_pagamentos (
+ id INTEGER PRIMARY KEY,
+ venda_id INTEGER NOT NULL REFERENCES vendas(id),
+ caixa_id INTEGER NOT NULL REFERENCES caixas(id),
+ usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+ metodo TEXT NOT NULL,
+ valor_centavos INTEGER NOT NULL CHECK(valor_centavos > 0),
+ data_hora TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS crediario_pagamentos_venda ON crediario_pagamentos(venda_id);
+CREATE TABLE IF NOT EXISTS registro_comandas (
+ id INTEGER PRIMARY KEY,
+ data_hora TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+ usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+ comanda INTEGER NOT NULL,
+ acao TEXT NOT NULL,
+ descricao TEXT NOT NULL,
+ enviado_cozinha INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS registro_comandas_data ON registro_comandas(data_hora);`);
+ // Campos adicionados depois da primeira versão: bancos antigos ganham as colunas sem perder dados.
+ const colunas = tabela => db.prepare(`PRAGMA table_info(${tabela})`).all().map(c => c.name);
+ if (!colunas('produtos').includes('adicional')) {
+  db.exec(`ALTER TABLE produtos ADD COLUMN adicional INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE produtos ADD COLUMN aceita_adicionais INTEGER NOT NULL DEFAULT 0;
+UPDATE produtos SET adicional=1, categoria=CASE WHEN categoria='' THEN 'Adicionais' ELSE categoria END WHERE codigo IN ('201','202');
+UPDATE produtos SET aceita_adicionais=1, categoria=CASE WHEN categoria='' THEN 'Açaí' ELSE categoria END WHERE codigo IN ('101','102');`);
+ }
+ if (!colunas('venda_itens').includes('adicional_de')) db.exec('ALTER TABLE venda_itens ADD COLUMN adicional_de INTEGER REFERENCES venda_itens(id)');
  // Inserção única dos produtos que já existiam no site.
  if (!db.prepare("SELECT 1 FROM configuracao WHERE chave='produtos_iniciais'").get()) {
-  const inserir = db.prepare('INSERT OR IGNORE INTO produtos (codigo,nome,preco_centavos,unidade,requer_cozinha) VALUES (?,?,?,?,?)');
+  const inserir = db.prepare("INSERT OR IGNORE INTO produtos (codigo,nome,preco_centavos,unidade,requer_cozinha,categoria,adicional,aceita_adicionais) VALUES (?,?,?,'UN',?,?,?,?)");
   db.exec('BEGIN');
   try {
-   for (const p of [['101','Açaí 500ml',1800,1],['102','Açaí 300ml',1300,1],['201','Leite Ninho',350,1],['202','Nutella',500,1],['301','Água sem Gás',400,0],['302','Coca-Cola Lata',600,0]]) inserir.run(p[0],p[1],p[2],'UN',p[3]);
+   for (const p of [['101','Açaí 500ml',1800,1,'Açaí',0,1],['102','Açaí 300ml',1300,1,'Açaí',0,1],['201','Leite Ninho',350,1,'Adicionais',1,0],['202','Nutella',500,1,'Adicionais',1,0],['301','Água sem Gás',400,0,'Bebidas',0,0],['302','Coca-Cola Lata',600,0,'Bebidas',0,0]]) inserir.run(...p);
    db.prepare("INSERT INTO configuracao VALUES ('produtos_iniciais','1')").run();
    db.exec('COMMIT');
   } catch(e) { db.exec('ROLLBACK'); throw e; }

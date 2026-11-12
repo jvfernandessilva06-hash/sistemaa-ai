@@ -48,6 +48,53 @@ function formatarDataHora(texto) {
     const [data, hora = ''] = texto.split(' ');
     return data.split('-').reverse().join('/') + ' ' + hora.slice(0, 5);
 }
+function novoUid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function lerValor(texto) { return Number(String(texto).trim().replace(/\./g, (m, i, s) => s.includes(',') ? '' : m).replace(',', '.')); }
+
+// ---------- JANELAS DE PERGUNTA ----------
+// Substituem prompt/alert/confirm do navegador. Devolvem uma Promise:
+// sem campos -> true/false; com campos -> objeto {id: valor} ou null se cancelou.
+let dialogoAtual = null;
+function dialogo({titulo, mensagem = '', campos = [], ok = 'Confirmar', cancelar = 'Cancelar', perigo = false, validar}) {
+    if (dialogoAtual) responderDialogo(false);
+    document.getElementById('dialogo-titulo').textContent = titulo;
+    document.getElementById('dialogo-mensagem').textContent = mensagem;
+    document.getElementById('dialogo-mensagem').hidden = !mensagem;
+    document.getElementById('dialogo-erro').textContent = '';
+    document.getElementById('dialogo-campos').innerHTML = campos.map(c => `
+        <label for="dialogo-${c.id}">${escaparHtml(c.rotulo)}${c.opcional ? ' <span class="optional">(opcional)</span>' : ''}</label>
+        ${c.tipo === 'select'
+            ? `<select id="dialogo-${c.id}">${c.opcoes.map(o => `<option ${o === c.valor ? 'selected' : ''}>${escaparHtml(o)}</option>`).join('')}</select>`
+            : `<input id="dialogo-${c.id}" ${c.tipo === 'dinheiro' ? 'inputmode="decimal"' : ''} maxlength="${c.max || 200}" value="${escaparHtml(c.valor ?? '')}" placeholder="${escaparHtml(c.placeholder || '')}" autocomplete="off">`}`).join('');
+    const botaoOk = document.getElementById('dialogo-ok');
+    botaoOk.textContent = ok;
+    botaoOk.className = `btn ${perigo ? 'btn-danger-forte' : 'btn-primary'}`;
+    document.getElementById('dialogo-cancelar').textContent = cancelar;
+    document.getElementById('dialogo-cancelar').hidden = !cancelar;
+    document.getElementById('modal-dialogo').classList.add('active');
+    const primeiro = campos.length ? document.getElementById(`dialogo-${campos[0].id}`) : botaoOk;
+    primeiro.focus();
+    primeiro.select?.();
+    return new Promise(resolve => { dialogoAtual = {resolve, campos, validar, voltar: focoAntesDoDialogo}; });
+}
+let focoAntesDoDialogo = null;
+document.addEventListener('focusin', e => { if (!e.target.closest?.('#modal-dialogo')) focoAntesDoDialogo = e.target; });
+function responderDialogo(confirmou) {
+    const atual = dialogoAtual;
+    if (!atual) return;
+    let resposta = confirmou;
+    if (confirmou && atual.campos.length) {
+        resposta = Object.fromEntries(atual.campos.map(c => [c.id, document.getElementById(`dialogo-${c.id}`).value.trim()]));
+        const erro = atual.validar?.(resposta);
+        if (erro) { document.getElementById('dialogo-erro').textContent = erro; return; }
+    }
+    if (!confirmou && atual.campos.length) resposta = null;
+    dialogoAtual = null;
+    document.getElementById('modal-dialogo').classList.remove('active');
+    atual.voltar?.focus?.();
+    atual.resolve(resposta);
+}
+const avisarDialogo = (titulo, mensagem) => dialogo({titulo, mensagem, ok: 'Entendi', cancelar: ''});
 
 // ---------- LOGIN ----------
 async function init() {
@@ -116,7 +163,7 @@ async function entrar(u) {
     document.getElementById('usuario-nome').textContent = `${u.nome} · ${u.perfil === 'admin' ? 'Administrador' : 'Atendente'}`;
     mostrarTela('screen-app');
     trocarAba('pdv');
-    await Promise.all([carregarProdutos(), carregarComandas(), carregarCaixa(), carregarVendas(), carregarImpressoras(), atualizarFila()]);
+    await Promise.all([carregarProdutos(), carregarComandas(), carregarCaixa(), carregarVendas(), carregarImpressoras(), atualizarFila(), carregarCrediario()]);
     if (usuario && !caixaAtual) solicitarAberturaCaixa();
 }
 
@@ -172,16 +219,24 @@ async function renderizarFechamento() {
             <div class="card-resumo"><span>Aberto por</span><strong>${escaparHtml(caixaAtual.operador)}</strong></div>
             <div class="card-resumo"><span>Fundo de troco</span><strong>${formatarMoeda(caixaAtual.fundo)}</strong></div>
         </div>`;
-        if (caixaAtual.resumo) html += `<div class="painel" style="margin-bottom:20px;"><h3>Resumo até agora</h3>${tabelaResumoCaixa(caixaAtual.resumo)}</div>`;
-        html += `<form class="fechamento-form" onsubmit="event.preventDefault(); fecharCaixa()">
+        if (caixaAtual.resumo) html += `<div class="painel bloco"><h3>Resumo até agora</h3>${tabelaResumoCaixa(caixaAtual.resumo)}</div>`;
+        const movimentos = caixaAtual.movimentos || [];
+        html += `<div class="painel bloco">
+            <div class="painel-topo"><h3>Retiradas e reforços</h3><div class="acoes-linha">
+                <button class="btn btn-secondary" type="button" onclick="registrarMovimento('sangria')">Retirar dinheiro (sangria)</button>
+                <button class="btn btn-secondary" type="button" onclick="registrarMovimento('suprimento')">Reforçar troco (suprimento)</button>
+            </div></div>
+            ${movimentos.length ? `<div class="table-scroll"><table class="table-items"><thead><tr><th>Hora</th><th>Tipo</th><th>Motivo</th><th>Quem</th><th class="num">Valor</th></tr></thead><tbody>${movimentos.map(m => `<tr><td>${formatarDataHora(m.dataHora).slice(11)}</td><td>${m.tipo === 'sangria' ? 'Retirada' : 'Reforço'}</td><td>${escaparHtml(m.motivo || '—')}</td><td>${escaparHtml(m.usuario)}</td><td class="num">${m.tipo === 'sangria' ? '−' : '+'} ${formatarMoeda(m.valor)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="field-help">Nenhuma retirada ou reforço neste caixa. Registre aqui quando tirar dinheiro da gaveta (ex.: pagar o gelo) ou colocar mais troco.</p>'}
+        </div>`;
+        html += `<form class="painel fechamento-form" onsubmit="event.preventDefault(); fecharCaixa()">
             <h3>Fechar o caixa</h3>
             <p class="field-help">Conte todo o dinheiro da gaveta, incluindo o fundo de troco, e informe o total.${ehAdmin() ? '' : ' A conferência dos valores é feita pelo administrador.'}</p>
             <label for="caixa-contado">Dinheiro contado na gaveta (R$)</label><input id="caixa-contado" type="number" min="0" step="0.01" required placeholder="0,00">
-            <label for="caixa-observacao">Observação <span class="optional">(opcional)</span></label><input id="caixa-observacao" maxlength="200" placeholder="Ex.: retirada para pagar fornecedor">
-            <button class="btn btn-primary full-width" type="submit" style="margin-top:18px;">Fechar caixa</button>
+            <label for="caixa-observacao">Observação <span class="optional">(opcional)</span></label><input id="caixa-observacao" maxlength="200">
+            <button class="btn btn-primary full-width" type="submit">Fechar caixa</button>
         </form>`;
     }
-    if (ehAdmin()) html += `<h3 style="margin:26px 0 12px;">Caixas anteriores</h3><div id="caixas-historico" class="field-help">Carregando…</div>`;
+    if (ehAdmin()) html += `<h3 class="subtitulo">Caixas anteriores</h3><div id="caixas-historico" class="field-help">Carregando…</div>`;
     box.innerHTML = html;
     if (ehAdmin()) carregarHistoricoCaixas();
 }
@@ -192,7 +247,10 @@ function tabelaResumoCaixa(r) {
         <tr><td>Vendas</td><td class="num">${r.vendas}</td></tr>
         <tr><td><strong>Total vendido</strong></td><td class="num"><strong>${formatarMoeda(r.total)}</strong></td></tr>
         ${linhas}
-        <tr><td><strong>Dinheiro esperado na gaveta</strong> <small>(fundo + dinheiro)</small></td><td class="num"><strong>${formatarMoeda(r.dinheiroEsperado)}</strong></td></tr>
+        ${(r.recebimentosCrediario || []).map(p => `<tr><td>Crediário recebido · ${escaparHtml(p.metodo)}</td><td class="num">${formatarMoeda(p.valor)}</td></tr>`).join('')}
+        ${r.suprimentos ? `<tr><td>Reforços de troco</td><td class="num">+ ${formatarMoeda(r.suprimentos)}</td></tr>` : ''}
+        ${r.sangrias ? `<tr><td>Retiradas</td><td class="num">− ${formatarMoeda(r.sangrias)}</td></tr>` : ''}
+        <tr><td><strong>Dinheiro esperado na gaveta</strong> <small>(fundo + dinheiro + reforços − retiradas)</small></td><td class="num"><strong>${formatarMoeda(r.dinheiroEsperado)}</strong></td></tr>
         ${r.contado === null ? '' : `<tr><td>Dinheiro contado</td><td class="num">${formatarMoeda(r.contado)}</td></tr><tr><td><strong>Diferença</strong></td><td class="num ${classeDiferenca(r.diferenca)}"><strong>${formatarMoeda(r.diferenca)}</strong></td></tr>`}
     </tbody></table>`;
 }
@@ -216,8 +274,8 @@ async function fecharCaixa() {
     const contado = Number(campo.value);
     if (campo.value === '' || !Number.isFinite(contado) || contado < 0) return avisar('Informe o dinheiro contado na gaveta.');
     const abertas = Object.values(comandas).filter(c => c.aberta).length;
-    const aviso = abertas ? `Ainda há ${abertas} comanda(s) aberta(s). Elas continuam abertas para o próximo caixa.\n\n` : '';
-    if (!confirm(`${aviso}Fechar o caixa com ${formatarMoeda(contado)} em dinheiro na gaveta?`)) return;
+    const aviso = abertas ? ` Ainda há ${abertas} comanda(s) aberta(s); elas continuam abertas para o próximo caixa.` : '';
+    if (!await dialogo({titulo: 'Fechar o caixa?', mensagem: `Dinheiro contado na gaveta: ${formatarMoeda(contado)}.${aviso}`, ok: 'Fechar caixa'})) return;
     try {
         const r = await api('/api/caixa/fechar', {method: 'POST', body: {contado, observacao: document.getElementById('caixa-observacao').value}});
         caixaAtual = null;
@@ -228,12 +286,31 @@ async function fecharCaixa() {
     } catch (e) { avisar(e.message); }
 }
 
+async function registrarMovimento(tipo) {
+    const sangria = tipo === 'sangria';
+    const r = await dialogo({
+        titulo: sangria ? 'Retirar dinheiro da gaveta' : 'Reforçar o troco',
+        mensagem: sangria ? 'Registre todo dinheiro que sair da gaveta para o fechamento bater.' : 'Registre o dinheiro que entrou na gaveta sem ser venda.',
+        campos: [{id: 'valor', rotulo: 'Valor (R$)', tipo: 'dinheiro', placeholder: '0,00'}, {id: 'motivo', rotulo: 'Motivo', placeholder: sangria ? 'Ex.: pagamento do gelo' : 'Ex.: troco trazido pelo dono', opcional: !sangria}],
+        ok: sangria ? 'Registrar retirada' : 'Registrar reforço',
+        validar: v => !(lerValor(v.valor) > 0) ? 'Informe um valor maior que zero.' : sangria && !v.motivo ? 'Informe o motivo da retirada.' : ''
+    });
+    if (!r) return;
+    try {
+        caixaAtual = (await api('/api/caixa/movimento', {method: 'POST', body: {tipo, valor: lerValor(r.valor), motivo: r.motivo}})).caixa;
+        avisar(sangria ? 'Retirada registrada.' : 'Reforço registrado.');
+        renderizarFechamento();
+    } catch (e) { avisar(e.message); }
+}
+
 // ---------- COMANDAS ----------
 function comandaVazia() { return { aberta: false, itens: [], adiantamento: 0, desconto: 0 }; }
 
 async function carregarComandas() {
     try {
         const dados = await api('/api/comandas');
+        // Itens antigos ganham um identificador para o registro de retiradas funcionar.
+        for (const c of Object.values(dados)) c.itens.forEach(i => { if (!i.uid) i.uid = novoUid(); if (!i.adicionais) i.adicionais = []; });
         comandas = dados;
         for (let i = 1; i <= TOTAL_COMANDAS; i++) ultimoSalvo[i] = JSON.stringify(comandas[i]);
         comandasCarregadas = true;
@@ -250,7 +327,9 @@ function salvarComandas() {
         if (texto !== ultimoSalvo[i]) { alteradas[i] = comandas[i]; ultimoSalvo[i] = texto; }
     }
     if (!Object.keys(alteradas).length) return filaSalvar;
-    filaSalvar = filaSalvar.then(() => api('/api/comandas', {method: 'PUT', body: {comandas: alteradas}})).catch(async e => {
+    const transferencia = transferenciaPendente;
+    transferenciaPendente = null;
+    filaSalvar = filaSalvar.then(() => api('/api/comandas', {method: 'PUT', body: {comandas: alteradas, transferencia}})).catch(async e => {
         avisar('A comanda não foi salva: ' + e.message);
         if (!usuario) return;
         await carregarComandas();
@@ -269,9 +348,9 @@ function calcularFinanceiroComanda(num) {
 
 function formatarMoeda(v) { return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 
+let transferenciaPendente = null;
 function renderizarTudo() {
     renderizarGrid();
-    renderizarAbertas();
     renderizarPagas();
     salvarComandas();
 }
@@ -286,43 +365,20 @@ function renderizarGrid() {
         const filtro = document.getElementById('filtro-comandas').value;
         if ((filtro === 'abertas' && !estaAberta) || (filtro === 'livres' && estaAberta)) continue;
 
-        // Verifica se há itens de cozinha pendentes de impressão
-        const temPendente = comandas[i].itens.some(item => item.requerCozinha && !item.impresso);
+        // Itens que ainda não foram para a cozinha: aviso com texto, não só cor.
+        const pendentes = comandas[i].itens.filter(item => item.requerCozinha && !item.impresso).length;
 
         const card = document.createElement('button');
         card.type = 'button';
-        card.setAttribute('aria-label', `Comanda ${i}, ${estaAberta ? formatarMoeda(fin.total) : 'livre'}`);
-        card.className = `comanda-card ${estaAberta ? 'comanda-ocupada' : 'comanda-livre'} ${temPendente ? 'has-pending' : ''}`;
+        card.setAttribute('aria-label', `Comanda ${i}, ${estaAberta ? formatarMoeda(fin.total) : 'livre'}${pendentes ? `, ${pendentes} item(ns) para enviar à cozinha` : ''}`);
+        card.className = `comanda-card ${estaAberta ? 'comanda-ocupada' : 'comanda-livre'} ${pendentes ? 'has-pending' : ''}`;
         card.onclick = () => abrirModalComanda(i);
         card.innerHTML = `
             <span class="numero">${i.toString().padStart(2, '0')}</span>
             <span class="valor">${estaAberta ? formatarMoeda(fin.total) : 'Livre'}</span>
+            ${pendentes ? '<span class="pendente-cozinha" aria-hidden="true">Cozinha</span>' : ''}
         `;
         container.appendChild(card);
-    }
-}
-
-function renderizarAbertas() {
-    const lista = document.getElementById('lista-abertas');
-    lista.innerHTML = '';
-
-    for (let i = 1; i <= TOTAL_COMANDAS; i++) {
-        if (comandas[i].aberta) {
-            const fin = calcularFinanceiroComanda(i);
-            const qtdItens = comandas[i].itens.reduce((a, b) => a + b.qtd, 0);
-
-            const li = document.createElement('li');
-            li.className = 'item-card aberto';
-            li.onclick = () => abrirModalComanda(i);
-            li.innerHTML = `
-                <div class="info-comanda">
-                    <span class="titulo">Comanda #${i.toString().padStart(2, '0')}</span>
-                    <span class="subtext">${qtdItens} item(ns)</span>
-                </div>
-                <span class="valor-destaque">${formatarMoeda(fin.total)}</span>
-            `;
-            lista.appendChild(li);
-        }
     }
 }
 
@@ -348,8 +404,9 @@ function renderizarPagas() {
 function renderizarAtalhosProdutos() {
     const container = document.getElementById('quick-products-bar');
     container.innerHTML = '';
-    produtosBase.filter(prod => prod.ativo).slice(0, 8).forEach(prod => {
+    produtosBase.filter(prod => prod.ativo && !prod.adicional).slice(0, 8).forEach(prod => {
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'btn btn-secondary btn-sm';
         btn.innerText = `+ ${prod.nome}${prod.unidade === 'KG' ? ' / kg' : ''}`;
         btn.onclick = () => inserirProdutoDireto(prod);
@@ -368,30 +425,35 @@ function abrirModalComanda(numero) {
     tbody.innerHTML = '';
 
     if (c.itens.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#999;">Nenhum item adicionado</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="vazio">Nenhum item. Busque um produto acima ou use os atalhos.</td></tr>`;
     } else {
         c.itens.forEach((item, index) => {
-            let statusCozinhaHtml = '<span class="status-badge badge-no-kitchen">N/A</span>';
+            let statusCozinhaHtml = '<span class="status-badge badge-no-kitchen">Não vai</span>';
             if (item.requerCozinha) {
                 statusCozinhaHtml = item.impresso
-                    ? '<span class="status-badge badge-printed">Impresso</span>'
-                    : '<span class="status-badge badge-pending">Pendente</span>';
+                    ? '<span class="status-badge badge-printed">Enviado</span>'
+                    : '<span class="status-badge badge-pending">A enviar</span>';
             }
-
+            const nome = escaparHtml(item.nome);
+            const adicionais = item.adicionais || [];
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>
-                    <strong>${escaparHtml(item.nome)}</strong>
+                    <strong>${nome}</strong>
+                    ${adicionais.length ? `<span class="item-adicionais">${adicionais.map(a => `+ ${a.qtd > 1 ? a.qtd + 'x ' : ''}${escaparHtml(a.nome)}`).join(', ')}</span>` : ''}
                     ${item.obs ? `<span class="item-obs">Obs: ${escaparHtml(item.obs)}</span>` : ''}
-                    <button class="btn btn-secondary btn-sm" style="margin-left:5px;" onclick="adicionarObservacao(${index})">📝 Obs</button>
+                    <span class="item-acoes">
+                        <button class="btn btn-secondary btn-sm" type="button" onclick="adicionarObservacao(${index})" aria-label="Observação de ${nome}">Obs</button>
+                        ${item.aceitaAdicionais || adicionais.length ? `<button class="btn btn-secondary btn-sm" type="button" onclick="abrirAdicionais(${index})" aria-label="Adicionais de ${nome}">Adicionais</button>` : ''}
+                    </span>
                 </td>
                 <td>
-                    <input class="item-quantity" aria-label="Quantidade de ${escaparHtml(item.nome)}" type="number" min="${item.unidade === 'KG' ? '0.001' : '1'}" step="${item.unidade === 'KG' ? '0.001' : '1'}" value="${item.qtd}" onchange="definirQuantidadeItem(${index}, this.value)"><small>${item.unidade || 'UN'}</small>
+                    <span class="qtd-celula"><input class="item-quantity" aria-label="Quantidade de ${nome}" type="number" min="${item.unidade === 'KG' ? '0.001' : '1'}" step="${item.unidade === 'KG' ? '0.001' : '1'}" value="${item.qtd}" onchange="definirQuantidadeItem(${index}, this.value)"><small>${item.unidade === 'KG' ? 'kg' : 'un'}</small></span>
                 </td>
-                <td>${formatarMoeda(item.preco)}<small> / ${(item.unidade || 'UN').toLowerCase()}</small></td>
-                <td>${formatarMoeda(totalItemCentavos(item) / 100)}</td>
-                <td style="text-align:center;">${statusCozinhaHtml}</td>
-                <td><button class="btn btn-danger btn-sm" onclick="removerItem(${index})">&times;</button></td>
+                <td class="num">${formatarMoeda(item.preco)}<small> / ${(item.unidade || 'UN').toLowerCase()}</small></td>
+                <td class="num">${formatarMoeda(totalItemCentavos(item) / 100)}</td>
+                <td>${statusCozinhaHtml}</td>
+                <td><button class="btn btn-remover" type="button" onclick="removerItem(${index})" aria-label="Remover ${nome}" title="Remover">&times;</button></td>
             `;
             tbody.appendChild(tr);
         });
@@ -415,19 +477,78 @@ function fecharModal() {
 }
 
 function inserirProdutoDireto(prod) {
-    if (!comandaSelecionada || !prod.ativo) return;
+    if (!comandaSelecionada || !prod.ativo) return false;
     comandas[comandaSelecionada].aberta = true;
 
     // Todo item novo que requer cozinha começa como impresso = false
     comandas[comandaSelecionada].itens.push({
         ...prod,
+        uid: novoUid(),
         qtd: prod.unidade === 'KG' ? 0.100 : 1,
         obs: "",
-        impresso: false
+        impresso: false,
+        adicionais: []
     });
 
     renderizarTudo();
     abrirModalComanda(comandaSelecionada);
+    // Produtos como o açaí já abrem a escolha de adicionais.
+    if (prod.aceitaAdicionais && produtosBase.some(p => p.ativo && p.adicional)) {
+        abrirAdicionais(comandas[comandaSelecionada].itens.length - 1);
+        return true;
+    }
+    return false;
+}
+
+// ---------- ADICIONAIS ----------
+let itemAdicionais = null;
+function abrirAdicionais(index) {
+    const item = comandas[comandaSelecionada]?.itens[index];
+    if (!item) return;
+    if (item.impresso) return avisar('Este item já foi para a cozinha. Para mudar os adicionais, remova e lance de novo.');
+    itemAdicionais = index;
+    document.getElementById('adicionais-item').textContent = `${item.nome}${item.unidade === 'UN' && item.qtd > 1 ? ` (${item.qtd} unidades: os adicionais valem para cada uma)` : ''}`;
+    renderizarAdicionais();
+    document.getElementById('modal-comanda').inert = true;
+    document.getElementById('modal-adicionais').classList.add('active');
+    document.querySelector('#adicionais-lista button')?.focus();
+}
+function renderizarAdicionais() {
+    const item = comandas[comandaSelecionada].itens[itemAdicionais];
+    const lista = document.getElementById('adicionais-lista');
+    const escolhidos = new Map((item.adicionais || []).map(a => [a.id, a.qtd]));
+    lista.innerHTML = produtosBase.filter(p => p.ativo && p.adicional).map(p => {
+        const qtd = escolhidos.get(p.id) || 0;
+        const nome = escaparHtml(p.nome);
+        return `<div class="adicional ${qtd ? 'escolhido' : ''}">
+            <button type="button" class="adicional-nome" onclick="mudarAdicional(${p.id}, 1)" aria-label="Adicionar ${nome}, ${formatarMoeda(p.preco)}${qtd ? `, escolhido ${qtd} vez(es)` : ''}">
+                <span>${nome}</span><small>${formatarMoeda(p.preco)}</small>
+            </button>
+            ${qtd ? `<span class="adicional-qtd"><button type="button" class="btn btn-secondary btn-sm" onclick="mudarAdicional(${p.id}, -1)" aria-label="Tirar um ${nome}">−</button><strong aria-hidden="true">${qtd}</strong></span>` : ''}
+        </div>`;
+    }).join('') || '<p class="field-help">Nenhum produto marcado como adicional. Cadastre em Produtos.</p>';
+    document.getElementById('adicionais-total').textContent = formatarMoeda((item.adicionais || []).reduce((s, a) => s + centavos(a.preco) * a.qtd, 0) / 100);
+}
+function mudarAdicional(produtoId, passo) {
+    const item = comandas[comandaSelecionada].itens[itemAdicionais];
+    const produto = produtosBase.find(p => p.id === produtoId);
+    item.adicionais = item.adicionais || [];
+    const atual = item.adicionais.find(a => a.id === produtoId);
+    if (atual) atual.qtd = Math.min(20, atual.qtd + passo);
+    else if (passo > 0) item.adicionais.push({id: produto.id, codigo: produto.codigo, nome: produto.nome, categoria: produto.categoria, preco: produto.preco, qtd: 1});
+    item.adicionais = item.adicionais.filter(a => a.qtd > 0);
+    const foco = document.activeElement?.getAttribute('onclick');
+    renderizarAdicionais();
+    document.querySelector(`#adicionais-lista [onclick="${foco}"]`)?.focus();
+}
+function fecharAdicionais() {
+    if (itemAdicionais === null) return;
+    itemAdicionais = null;
+    document.getElementById('modal-adicionais').classList.remove('active');
+    document.getElementById('modal-comanda').inert = false;
+    renderizarTudo();
+    if (comandaSelecionada) abrirModalComanda(comandaSelecionada);
+    document.getElementById('input-item-modal').focus();
 }
 
 function normalizarBusca(valor) {
@@ -504,9 +625,8 @@ function limparBuscaComanda() {
     document.getElementById('busca-produtos-status').hidden = true;
 }
 function selecionarProdutoBusca(produto) {
-    inserirProdutoDireto(produto);
     limparBuscaComanda();
-    document.getElementById('input-item-modal').focus();
+    if (!inserirProdutoDireto(produto)) document.getElementById('input-item-modal').focus();
 }
 function pesquisarProdutosComanda() {
     const termo = document.getElementById('input-item-modal').value;
@@ -517,6 +637,7 @@ function pesquisarProdutosComanda() {
     resultadosBusca = encontrarProdutos(termo).slice(0, 30);
     indiceBusca = 0;
     container.hidden = resultadosBusca.length === 0;
+    document.getElementById('input-item-modal').setAttribute('aria-expanded', String(resultadosBusca.length > 0));
     status.hidden = false;
     status.textContent = !produtosConectados ? 'Conecte ao servidor local para pesquisar os produtos.' : resultadosBusca.length ? 'Use ↑ ↓ para escolher e Enter para adicionar.' : 'Nenhum produto encontrado. Tente outra palavra ou o código.';
     resultadosBusca.forEach((prod, i) => {
@@ -555,15 +676,15 @@ function adicionarItemPorPesquisa() {
     else pesquisarProdutosComanda();
 }
 
-function adicionarObservacao(index) {
+async function adicionarObservacao(index) {
     if (!comandaSelecionada) return;
-    const item = comandas[comandaSelecionada].itens[index];
-    const obs = prompt(`Digite a observação para "${item.nome}":`, item.obs || "");
-    if (obs !== null) {
-        item.obs = obs.trim().slice(0, 200);
-        renderizarTudo();
-        abrirModalComanda(comandaSelecionada);
-    }
+    const numero = comandaSelecionada;
+    const item = comandas[numero].itens[index];
+    const r = await dialogo({titulo: 'Observação', mensagem: item.nome, campos: [{id: 'obs', rotulo: 'Observação para a cozinha', valor: item.obs || '', placeholder: 'Ex.: sem granola', max: 200}], ok: 'Salvar'});
+    if (!r || comandas[numero].itens[index] !== item) return;
+    item.obs = r.obs.slice(0, 200);
+    renderizarTudo();
+    if (comandaSelecionada === numero) abrirModalComanda(numero);
 }
 
 function removerItem(index) {
@@ -590,25 +711,32 @@ async function imprimirCozinha() {
     avisar(resultado?.naFila ? resultado.mensagem : 'Pedido enviado para a cozinha.');
 }
 
-function adiantarValor() {
+async function adiantarValor() {
     if (!comandaSelecionada) return;
-    const val = prompt("Digite o valor do adiantamento (R$):");
-    const a = parseFloat(val ? val.replace(',', '.') : 0);
-    if (Number.isFinite(a) && a >= 0 && centavos(a) <= centavos(calcularFinanceiroComanda(comandaSelecionada).total)) {
-        comandas[comandaSelecionada].adiantamento = (centavos(comandas[comandaSelecionada].adiantamento) + centavos(a)) / 100;
-        renderizarTudo();
-        abrirModalComanda(comandaSelecionada);
-    } else if (val !== null) avisar('Informe um adiantamento entre zero e o saldo a pagar.');
+    const numero = comandaSelecionada;
+    const saldo = calcularFinanceiroComanda(numero).total;
+    const r = await dialogo({
+        titulo: 'Adiantamento', mensagem: `O cliente paga uma parte agora. Saldo da comanda: ${formatarMoeda(saldo)}.`,
+        campos: [{id: 'valor', rotulo: 'Valor adiantado (R$)', tipo: 'dinheiro', placeholder: '0,00'}], ok: 'Registrar',
+        validar: v => { const a = lerValor(v.valor); return !(a > 0) || centavos(a) > centavos(saldo) ? 'Informe um valor entre zero e o saldo a pagar.' : ''; }
+    });
+    if (!r) return;
+    comandas[numero].adiantamento = (centavos(comandas[numero].adiantamento) + centavos(lerValor(r.valor))) / 100;
+    renderizarTudo();
+    if (comandaSelecionada === numero) abrirModalComanda(numero);
 }
 
-function abrirNovaComandaRapida() {
-    const num = prompt("Número da comanda (1 a 50):");
-    const n = parseInt(num);
-    if (n >= 1 && n <= TOTAL_COMANDAS) {
-        comandas[n].aberta = true;
-        renderizarTudo();
-        abrirModalComanda(n);
-    }
+async function abrirNovaComandaRapida() {
+    const r = await dialogo({
+        titulo: 'Abrir comanda', campos: [{id: 'numero', rotulo: 'Número da comanda (1 a 50)', tipo: 'dinheiro', placeholder: 'Ex.: 12', max: 2}], ok: 'Abrir',
+        validar: v => { const n = Number(v.numero); return Number.isInteger(n) && n >= 1 && n <= TOTAL_COMANDAS ? '' : 'Digite um número de 1 a 50.'; }
+    });
+    if (!r) return;
+    const n = Number(r.numero);
+    comandas[n].aberta = true;
+    renderizarTudo();
+    abrirModalComanda(n);
+    document.getElementById('input-item-modal').focus();
 }
 
 // ---------- NAVEGAÇÃO ----------
@@ -617,18 +745,21 @@ function abaAtiva() { return document.querySelector('.view-section.active')?.id.
 
 function trocarAba(aba) {
     if (ABAS_ADMIN.includes(aba) && !ehAdmin()) aba = 'pdv';
-    document.querySelectorAll('.navbar-menu a').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.navbar-menu button').forEach(b => { b.classList.remove('active'); b.removeAttribute('aria-current'); });
     document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
 
-    document.getElementById(`nav-${aba}`).classList.add('active');
+    const botao = document.getElementById(`nav-${aba}`);
+    botao.classList.add('active');
+    botao.setAttribute('aria-current', 'page');
     document.getElementById(`view-${aba}`).classList.add('active');
 
+    if (aba === 'crediario') carregarCrediario();
     if (aba === 'historico') renderizarHistorico();
     if (aba === 'caixa') renderizarFechamento();
     if (aba === 'relatorios') { if (!document.getElementById('rel-inicio').value) aplicarPeriodoRelatorio(); else carregarRelatorio(); }
     if (aba === 'usuarios') carregarUsuarios();
     if (aba === 'cardapio') carregarProdutos();
-    if (aba === 'impressoras') carregarImpressoras().then(renderizarImpressoras);
+    if (aba === 'impressoras') { carregarImpressoras().then(renderizarImpressoras); carregarBackup(); }
 }
 
 function escaparHtml(texto) {
@@ -685,6 +816,10 @@ function valoresPagamento() {
     let erro = dados.erro;
     if (entradas.some(p => !Number.isFinite(p.valor) || p.valor < 0)) erro = 'Informe valores válidos, iguais ou maiores que zero.';
     const pagamentos = entradas.filter(p => p.valor > 0).map(p => ({metodo:p.metodo, valor:centavos(p.valor)}));
+    if (pagamentos.some(p => p.metodo === 'Crediário')) {
+        const lista = document.getElementById('clientes-crediario');
+        if (!lista.children.length) lista.replaceChildren(...clientesCrediario.map(c => Object.assign(document.createElement('option'), {value: c.cliente})));
+    }
     const informado = pagamentos.reduce((s,p) => s + p.valor, 0);
     const dinheiro = pagamentos.find(p => p.metodo === 'Dinheiro')?.valor || 0;
     const troco = Math.max(0, informado - dados.total);
@@ -729,8 +864,9 @@ async function confirmarPagamento() {
         renderizarTudo();
         carregarVendas();
         avisar(crediario ? 'Venda registrada com saldo no crediário.' : 'Pagamento registrado. Troco: ' + formatarMoeda(venda.troco));
+        if (crediario) carregarCrediario();
         const quando = configImpressoras?.comprovante || 'perguntar';
-        if (quando === 'sempre' || (quando === 'perguntar' && confirm(`Pagamento registrado${venda.troco ? '. Troco: ' + formatarMoeda(venda.troco) : ''}.\n\nImprimir o comprovante?`))) imprimirComprovante(venda);
+        if (quando === 'sempre' || (quando === 'perguntar' && await dialogo({titulo: 'Pagamento registrado', mensagem: venda.troco ? `Troco: ${formatarMoeda(venda.troco)}. Imprimir o comprovante?` : 'Imprimir o comprovante?', ok: 'Imprimir', cancelar: 'Não imprimir'}))) imprimirComprovante(venda);
     } catch (e) {
         document.getElementById('pag-erro').textContent = e.message;
         if (!caixaAtual || /caixa/i.test(e.message)) carregarCaixa();
@@ -780,12 +916,14 @@ function confirmarTransferencia() {
     if (!erro && saldoRestante < centavos(origem.desconto || 0) + centavos(origem.adiantamento || 0)) erro = 'Mantenha itens suficientes na origem para cobrir o desconto e o adiantamento.';
     if (erro) { document.getElementById('transferencia-erro').textContent = erro; return; }
     origem.itens.forEach((item, i) => {
-        if (quantidades[i]) destino.itens.push({...item, qtd:quantidades[i]});
+        if (quantidades[i]) destino.itens.push({...item, uid: novoUid(), adicionais: (item.adicionais || []).map(a => ({...a})), qtd: quantidades[i]});
         item.qtd = Math.round((item.qtd - quantidades[i]) * 1000) / 1000;
     });
     origem.itens = origem.itens.filter(item => item.qtd > 0);
     origem.aberta = origem.itens.length > 0;
     destino.aberta = true;
+    // Avisa o servidor que foi transferência, para o registro não contar como item retirado.
+    transferenciaPendente = {origem: comandaSelecionada, destino: numeroDestino};
     fecharJanela('modal-transferencia');
     renderizarTudo();
     abrirModalComanda(comandaSelecionada);
@@ -804,6 +942,7 @@ async function renderizarHistorico() {
     if (!inicio.value) inicio.value = hojeISO();
     if (!fim.value) fim.value = inicio.value;
     document.getElementById('historico-descricao').textContent = ehAdmin() ? 'Todas as vendas do período escolhido.' : 'Vendas do caixa aberto agora.';
+    if (ehAdmin()) renderizarRegistro();
     box.textContent = 'Carregando…';
     let vendas;
     try { vendas = await api('/api/vendas' + (ehAdmin() ? `?inicio=${inicio.value}&fim=${fim.value}` : '')); }
@@ -814,25 +953,120 @@ async function renderizarHistorico() {
             <td>#${v.comanda}</td>
             <td>${formatarDataHora(v.dataHora)}</td>
             <td>${escaparHtml(v.atendente)}</td>
-            <td><small>${v.itens.map(i => `${i.qtd}${i.unidade === 'KG' ? ' kg' : 'x'} ${escaparHtml(i.nome)}`).join('<br>')}</small></td>
+            <td><small>${v.itens.map(i => `${i.qtd}${i.unidade === 'KG' ? ' kg' : 'x'} ${escaparHtml(i.nome)}${(i.adicionais || []).length ? ` (+ ${i.adicionais.map(a => escaparHtml(a.nome)).join(', ')})` : ''}`).join('<br>')}</small></td>
             <td>${v.pagamentos.map(p => escaparHtml(p.metodo) + ': ' + formatarMoeda(p.valor)).join('<br>') || 'Saldo quitado'}${v.cliente ? '<br>' + escaparHtml(v.cliente) : ''}</td>
             <td class="num">${formatarMoeda(v.desconto)}</td>
             <td class="num">${formatarMoeda(v.valor)}</td>
             <td class="status-venda">${v.cancelada ? `Cancelada<br><small>${escaparHtml(v.motivoCancelamento)}</small>` : escaparHtml(v.status)}</td>
-            <td class="acoes-venda">${v.cancelada ? '' : `<button class="btn btn-secondary btn-sm" onclick="reimprimirVenda(${v.id})">Imprimir</button>`}${ehAdmin() && !v.cancelada ? ` <button class="btn btn-danger btn-sm" onclick="cancelarVenda(${v.id})">Cancelar</button>` : ''}</td>
+            <td class="acoes-venda">${v.cancelada ? '' : `<button class="btn btn-secondary btn-sm" type="button" onclick="reimprimirVenda(${v.id})" aria-label="Imprimir comprovante da comanda ${v.comanda}">Imprimir</button>`}${ehAdmin() && !v.cancelada ? ` <button class="btn btn-danger btn-sm" type="button" onclick="cancelarVenda(${v.id})" aria-label="Cancelar venda da comanda ${v.comanda}">Cancelar</button>` : ''}</td>
         </tr>`).join('') + '</tbody></table></div>';
     vendasHistorico = vendas;
 }
 
+async function renderizarRegistro() {
+    const box = document.getElementById('registro-list');
+    const inicio = document.getElementById('historico-inicio').value, fim = document.getElementById('historico-fim').value;
+    box.textContent = 'Carregando…';
+    let registro;
+    try { registro = await api(`/api/registro?inicio=${inicio}&fim=${fim}`); } catch (e) { box.textContent = e.message; return; }
+    if (!registro.length) { box.textContent = 'Nenhum item foi retirado de comandas neste período.'; return; }
+    box.innerHTML = '<div class="table-scroll"><table class="table-items"><thead><tr><th>Data / hora</th><th>Quem</th><th>Comanda</th><th>O que aconteceu</th><th>Cozinha</th></tr></thead><tbody>' +
+        registro.map(r => `<tr><td>${formatarDataHora(r.dataHora)}</td><td>${escaparHtml(r.usuario)}</td><td>#${r.comanda}</td><td>${r.acao === 'transferiu' ? 'Transferiu' : 'Retirou'} ${escaparHtml(r.descricao)}</td><td>${r.enviadoCozinha ? '<span class="status-badge badge-pending">Já tinha ido</span>' : '—'}</td></tr>`).join('') +
+        '</tbody></table></div>';
+}
+
 async function cancelarVenda(id) {
-    const motivo = prompt('Motivo do cancelamento (obrigatório):');
-    if (motivo === null) return;
+    const r = await dialogo({
+        titulo: 'Cancelar venda', mensagem: 'A venda continua no histórico, marcada como cancelada, e sai dos relatórios.',
+        campos: [{id: 'motivo', rotulo: 'Motivo do cancelamento', placeholder: 'Ex.: lançada na comanda errada'}],
+        ok: 'Cancelar venda', cancelar: 'Voltar', perigo: true, validar: v => v.motivo ? '' : 'Informe o motivo.'
+    });
+    if (!r) return;
     try {
-        await api(`/api/vendas/${id}/cancelar`, {method: 'POST', body: {motivo}});
+        await api(`/api/vendas/${id}/cancelar`, {method: 'POST', body: {motivo: r.motivo}});
         avisar('Venda cancelada. Ela não entra mais nos relatórios.');
         renderizarHistorico();
         carregarVendas();
     } catch (e) { avisar(e.message); }
+}
+
+// ---------- CREDIÁRIO ----------
+let clientesCrediario = [];
+async function carregarCrediario() {
+    try { clientesCrediario = await api('/api/crediario'); } catch (e) { avisar(e.message); }
+    document.getElementById('clientes-crediario').replaceChildren(...clientesCrediario.map(c => Object.assign(document.createElement('option'), {value: c.cliente})));
+    if (abaAtiva() === 'crediario') renderizarCrediario();
+}
+
+function renderizarCrediario() {
+    const box = document.getElementById('crediario-lista');
+    const termo = document.getElementById('crediario-busca').value;
+    const total = clientesCrediario.reduce((s, c) => s + centavos(c.saldo), 0) / 100;
+    const lista = normalizarBusca(termo) ? clientesCrediario.filter(c => notaBusca(termo, {nome: c.cliente})) : clientesCrediario;
+    let html = `<div class="cards-resumo"><div class="card-resumo"><span>Total a receber</span><strong>${formatarMoeda(total)}</strong></div><div class="card-resumo"><span>Clientes devendo</span><strong>${clientesCrediario.length}</strong></div></div>`;
+    if (!clientesCrediario.length) html += '<p class="field-help">Ninguém está devendo. Vendas no crediário aparecem aqui.</p>';
+    else if (!lista.length) html += '<p class="field-help">Nenhum cliente encontrado.</p>';
+    html += lista.map((c, i) => `<details class="painel cliente-crediario" ${lista.length === 1 ? 'open' : ''}>
+        <summary><span class="cliente-nome">${escaparHtml(c.cliente)}</span><span class="cliente-saldo">${formatarMoeda(c.saldo)}</span></summary>
+        <div class="table-scroll"><table class="table-items"><thead><tr><th>Compra</th><th>Comanda</th><th class="num">No crediário</th><th class="num">Já pagou</th><th class="num">Falta</th></tr></thead><tbody>
+            ${c.vendas.map(v => `<tr><td>${formatarDataHora(v.dataHora)}</td><td>#${v.comanda}</td><td class="num">${formatarMoeda(v.valor)}</td><td class="num">${formatarMoeda(v.pago)}</td><td class="num">${formatarMoeda(v.saldo)}</td></tr>`).join('')}
+        </tbody></table></div>
+        <button class="btn btn-primary" type="button" onclick="receberDoCliente(${clientesCrediario.indexOf(c)})">Receber de ${escaparHtml(c.cliente)}</button>
+    </details>`).join('');
+    box.innerHTML = html;
+}
+
+async function receberDoCliente(indice) {
+    const c = clientesCrediario[indice];
+    if (!c) return;
+    if (!caixaAtual) { avisar('Abra o caixa antes de receber.'); return solicitarAberturaCaixa(); }
+    const r = await dialogo({
+        titulo: `Receber de ${c.cliente}`, mensagem: `Deve ${formatarMoeda(c.saldo)}. Pode receber tudo ou só uma parte.`,
+        campos: [{id: 'valor', rotulo: 'Valor recebido (R$)', tipo: 'dinheiro', valor: c.saldo.toFixed(2).replace('.', ',')}, {id: 'metodo', rotulo: 'Forma de pagamento', tipo: 'select', opcoes: ['Dinheiro', 'Pix', 'Débito', 'Crédito'], valor: 'Dinheiro'}],
+        ok: 'Receber', validar: v => { const n = lerValor(v.valor); return !(n > 0) ? 'Informe um valor maior que zero.' : centavos(n) > centavos(c.saldo) ? 'O valor passa do que o cliente deve.' : ''; }
+    });
+    if (!r) return;
+    try {
+        clientesCrediario = (await api('/api/crediario/receber', {method: 'POST', body: {cliente: c.cliente, valor: lerValor(r.valor), metodo: r.metodo}})).clientes;
+        avisar(`Recebido ${formatarMoeda(lerValor(r.valor))} de ${c.cliente}.`);
+        renderizarCrediario();
+    } catch (e) { avisar(e.message); }
+}
+
+// ---------- BACKUP ----------
+async function carregarBackup() {
+    const box = document.getElementById('backup-box');
+    let b;
+    try { b = await api('/api/backup'); } catch (e) { box.textContent = e.message; return; }
+    const tamanho = n => n > 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.ceil(n / 1024) + ' KB';
+    box.innerHTML = `
+        <div class="cards-resumo">
+            <div class="card-resumo"><span>Último backup</span><strong>${b.status ? formatarDataHora(b.status.ultimo) : 'Ainda não feito'}</strong></div>
+            <div class="card-resumo"><span>Cópias guardadas</span><strong>${b.arquivos.length}</strong></div>
+        </div>
+        ${b.status?.erroExtra ? `<p class="form-error" role="alert">${escaparHtml(b.status.erroExtra)}</p>` : ''}
+        ${!b.pastaExtra ? '<p class="aviso">As cópias estão só neste computador. Escolha uma pasta extra abaixo para ficar protegido se ele estragar.</p>' : ''}
+        <form class="painel fechamento-form" onsubmit="event.preventDefault(); salvarBackup()">
+            <label for="backup-pasta">Pasta extra para as cópias</label>
+            <input id="backup-pasta" value="${escaparHtml(b.pastaExtra)}" placeholder="Ex.: E:\\Backup Acai ou C:\\Users\\voce\\Google Drive\\Backup">
+            <p class="field-help">Use o caminho de um pen drive ou da pasta do Google Drive para computador. Deixe em branco para não copiar.</p>
+            <p id="backup-erro" class="form-error" role="alert"></p>
+            <div class="product-form-actions"><button class="btn btn-primary" type="submit">Salvar pasta</button><button class="btn btn-secondary" type="button" onclick="backupAgora()">Fazer backup agora</button></div>
+        </form>
+        <details class="ajuda">
+            <summary>Cópias guardadas neste computador (${b.arquivos.length})</summary>
+            <p class="field-help">Pasta: <code>${escaparHtml(b.pasta)}</code></p>
+            <ul class="lista-backups">${b.arquivos.map(a => `<li><span>${escaparHtml(a.nome)} · ${tamanho(a.tamanho)}</span><a class="btn btn-secondary btn-sm" href="/api/backup/baixar?arquivo=${encodeURIComponent(a.nome)}" download>Baixar</a></li>`).join('') || '<li>Nenhuma cópia ainda.</li>'}</ul>
+            <p><strong>Para restaurar:</strong> feche a janela do sistema, copie o arquivo do backup para a pasta <code>data</code> com o nome <code>produtos.db</code> (substituindo o atual) e abra o sistema de novo.</p>
+        </details>`;
+}
+async function salvarBackup() {
+    try { await api('/api/backup', {method: 'PUT', body: {pastaExtra: document.getElementById('backup-pasta').value}}); avisar('Pasta de backup salva.'); carregarBackup(); }
+    catch (e) { document.getElementById('backup-erro').textContent = e.message; }
+}
+async function backupAgora() {
+    try { const b = await api('/api/backup/agora', {method: 'POST', body: {}}); avisar(b.status.erroExtra ? 'Backup feito neste computador, mas a cópia extra falhou.' : 'Backup feito.'); carregarBackup(); }
+    catch (e) { avisar(e.message); }
 }
 
 // ---------- RELATÓRIOS ----------
@@ -963,7 +1197,13 @@ async function salvarUsuario() {
 // ---------- TECLADO ----------
 document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
-        const janela = ['modal-transferencia', 'modal-pagamento'].find(id => document.getElementById(id).classList.contains('active'));
+        // Fecha só a janela de cima.
+        const aberta = id => document.getElementById(id).classList.contains('active');
+        if (aberta('modal-dialogo')) return responderDialogo(false);
+        if (aberta('modal-adicionais')) return fecharAdicionais();
+        if (aberta('modal-fila')) return fecharFila();
+        if (aberta('modal-abertura-caixa')) return fecharAberturaCaixa();
+        const janela = ['modal-transferencia', 'modal-pagamento'].find(aberta);
         if (janela) fecharJanela(janela); else if (comandaSelecionada) fecharModal();
     }
     if (event.target.id === 'input-item-modal') {
@@ -996,7 +1236,12 @@ document.addEventListener('keydown', event => {
     if (!event.shiftKey && document.activeElement === ultimo) { event.preventDefault(); primeiro.focus(); }
 });
 
-function totalItemCentavos(item) { return Math.round(centavos(item.preco) * Math.round(item.qtd * 1000) / 1000); }
+// Igual ao servidor: adicionais contam por unidade; no item por kg, uma vez só.
+function totalItemCentavos(item) {
+    const base = Math.round(centavos(item.preco) * Math.round(item.qtd * 1000) / 1000);
+    const adicionais = (item.adicionais || []).reduce((s, a) => s + centavos(a.preco) * a.qtd, 0);
+    return base + adicionais * (item.unidade === 'KG' ? 1 : item.qtd);
+}
 function definirQuantidadeItem(index, valor) {
     if (!comandaSelecionada) return;
     const item = comandas[comandaSelecionada].itens[index];
@@ -1067,6 +1312,7 @@ function documentoCozinha(numero, itens) {
         {t: 'linha'},
         ...itens.flatMap(i => [
             {t: 'texto', v: `${quantidadeTexto(i)} ${i.nome}`, b: true, g: 1},
+            ...(i.adicionais || []).map(a => ({t: 'texto', v: `  + ${a.qtd > 1 ? a.qtd + 'x ' : ''}${a.nome}`, g: 1})),
             ...(i.obs ? [{t: 'texto', v: `>> ${i.obs}`, b: true}] : [])
         ]),
         {t: 'linha'}
@@ -1081,6 +1327,7 @@ function documentoComprovante(venda) {
         {t: 'linha'});
     venda.itens.forEach(i => {
         doc.push({t: 'texto', v: i.nome}, {t: 'par', e: `  ${quantidadeTexto(i)} ${formatarMoeda(i.preco)}${i.unidade === 'KG' ? '/kg' : ''}`, d: formatarMoeda(i.total)});
+        (i.adicionais || []).forEach(a => doc.push({t: 'par', e: `  + ${a.qtd}x ${a.nome}`, d: formatarMoeda(a.total)}));
     });
     doc.push({t: 'linha'}, {t: 'par', e: 'Subtotal', d: formatarMoeda(venda.subtotal)});
     if (venda.desconto) doc.push({t: 'par', e: 'Desconto', d: '-' + formatarMoeda(venda.desconto)});
@@ -1108,7 +1355,7 @@ function renderizarImpressoras() {
     for (const destino of ['cozinha', 'caixa']) {
         const cfg = configImpressoras[destino];
         document.getElementById(`impressora-${destino}`).innerHTML = `
-            <h3>${destino === 'cozinha' ? 'Cozinha' : 'Caixa'}</h3>
+            <h4>${destino === 'cozinha' ? 'Cozinha' : 'Caixa'}</h4>
             <label for="imp-${destino}-modo">Como a impressora está ligada</label>
             <select id="imp-${destino}-modo" onchange="atualizarCampoEndereco('${destino}')">${Object.entries(MODOS_IMPRESSORA).map(([v, t]) => `<option value="${v}" ${cfg.modo === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
             <div id="imp-${destino}-endereco-box">
@@ -1284,6 +1531,8 @@ function editarProduto(id) {
     for (const [campo,valor] of Object.entries({nome:p.nome,codigo:p.codigo,preco:p.preco.toFixed(2),unidade:p.unidade,categoria:p.categoria,barras:p.codigoBarras})) document.getElementById('produto-' + campo).value = valor;
     document.getElementById('produto-cozinha').checked = p.requerCozinha;
     document.getElementById('produto-ativo').checked = p.ativo;
+    document.getElementById('produto-adicional').checked = p.adicional;
+    document.getElementById('produto-aceita-adicionais').checked = p.aceitaAdicionais;
     document.getElementById('produto-form-titulo').textContent = 'Editar produto';
     document.getElementById('produto-erro').textContent = ''; atualizarRotuloPreco();
     document.getElementById('produto-nome').focus();
@@ -1293,7 +1542,7 @@ async function salvarProduto() {
     const botao = document.getElementById('produto-salvar'); botao.disabled = true;
     document.getElementById('produto-erro').textContent = '';
     const id = document.getElementById('produto-id').value;
-    const dados = {codigo:document.getElementById('produto-codigo').value.trim(),nome:document.getElementById('produto-nome').value.trim(),preco:Number(document.getElementById('produto-preco').value),unidade:document.getElementById('produto-unidade').value,categoria:document.getElementById('produto-categoria').value.trim(),codigoBarras:document.getElementById('produto-barras').value.trim(),requerCozinha:document.getElementById('produto-cozinha').checked,ativo:document.getElementById('produto-ativo').checked};
+    const dados = {codigo:document.getElementById('produto-codigo').value.trim(),nome:document.getElementById('produto-nome').value.trim(),preco:Number(document.getElementById('produto-preco').value),unidade:document.getElementById('produto-unidade').value,categoria:document.getElementById('produto-categoria').value.trim(),codigoBarras:document.getElementById('produto-barras').value.trim(),requerCozinha:document.getElementById('produto-cozinha').checked,ativo:document.getElementById('produto-ativo').checked,adicional:document.getElementById('produto-adicional').checked,aceitaAdicionais:document.getElementById('produto-aceita-adicionais').checked};
     try {
         const result = await api('/api/produtos' + (id ? '/' + id : ''), {method:id ? 'PUT' : 'POST', body:dados});
         const index = produtosBase.findIndex(p => p.id === result.id);

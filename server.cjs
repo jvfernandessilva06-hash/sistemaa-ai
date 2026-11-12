@@ -25,7 +25,7 @@ function dataParam(valor) { return /^\d{4}-\d{2}-\d{2}$/.test(valor || '') ? val
 
 // ---------- PRODUTOS ----------
 function produto(row) {
- return {id:row.id,codigo:row.codigo,nome:row.nome,preco:row.preco_centavos/100,unidade:row.unidade,categoria:row.categoria,codigoBarras:row.codigo_barras,requerCozinha:!!row.requer_cozinha,ativo:!!row.ativo};
+ return {id:row.id,codigo:row.codigo,nome:row.nome,preco:row.preco_centavos/100,unidade:row.unidade,categoria:row.categoria,codigoBarras:row.codigo_barras,requerCozinha:!!row.requer_cozinha,ativo:!!row.ativo,adicional:!!row.adicional,aceitaAdicionais:!!row.aceita_adicionais};
 }
 function validarProduto(body) {
  const codigo = typeof body.codigo==='string' ? body.codigo.trim() : '';
@@ -36,7 +36,8 @@ function validarProduto(body) {
  if (!['UN','KG'].includes(body.unidade)) falha(400,'Selecione unidade ou kg.');
  if (typeof body.requerCozinha!=='boolean' || typeof body.ativo!=='boolean') falha(400,'Informe o status e o envio à cozinha.');
  for (const campo of ['categoria','codigoBarras']) if (body[campo]!==undefined && (typeof body[campo]!=='string' || body[campo].length>80)) falha(400,'Categoria e código de barras devem ter até 80 caracteres.');
- return [codigo,nome,Math.round(body.preco*100),body.unidade,(body.categoria||'').trim(),(body.codigoBarras||'').trim(),Number(body.requerCozinha),Number(body.ativo)];
+ // adicional: vai junto de outro item (ex.: Nutella no açaí). aceitaAdicionais: abre a escolha de adicionais ao lançar.
+ return [codigo,nome,Math.round(body.preco*100),body.unidade,(body.categoria||'').trim(),(body.codigoBarras||'').trim(),Number(body.requerCozinha),Number(body.ativo),Number(body.adicional === true),Number(body.aceitaAdicionais === true)];
 }
 function salvarProduto(ctx) {
  const campos = validarProduto(ctx.body);
@@ -44,10 +45,10 @@ function salvarProduto(ctx) {
   let id;
   if (ctx.params[0]) {
    id = Number(ctx.params[0]);
-   const result = db.prepare('UPDATE produtos SET codigo=?,nome=?,preco_centavos=?,unidade=?,categoria=?,codigo_barras=?,requer_cozinha=?,ativo=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?').run(...campos,id);
+   const result = db.prepare('UPDATE produtos SET codigo=?,nome=?,preco_centavos=?,unidade=?,categoria=?,codigo_barras=?,requer_cozinha=?,ativo=?,adicional=?,aceita_adicionais=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?').run(...campos,id);
    if (!result.changes) falha(404,'Produto não encontrado.');
   } else {
-   id = Number(db.prepare('INSERT INTO produtos (codigo,nome,preco_centavos,unidade,categoria,codigo_barras,requer_cozinha,ativo) VALUES (?,?,?,?,?,?,?,?)').run(...campos).lastInsertRowid);
+   id = Number(db.prepare('INSERT INTO produtos (codigo,nome,preco_centavos,unidade,categoria,codigo_barras,requer_cozinha,ativo,adicional,aceita_adicionais) VALUES (?,?,?,?,?,?,?,?,?,?)').run(...campos).lastInsertRowid);
    ctx.status = 201;
   }
   return produto(db.prepare('SELECT * FROM produtos WHERE id=?').get(id));
@@ -149,13 +150,23 @@ function caixaAberto() {
 function resumoCaixa(c) {
  const vendas = db.prepare('SELECT COUNT(*) AS qtd, COALESCE(SUM(total_centavos),0) AS total FROM vendas WHERE caixa_id=? AND cancelada=0').get(c.id);
  const pagamentos = db.prepare('SELECT p.metodo, SUM(p.valor_centavos) AS valor FROM venda_pagamentos p JOIN vendas v ON v.id=p.venda_id WHERE v.caixa_id=? AND v.cancelada=0 GROUP BY p.metodo ORDER BY valor DESC').all(c.id);
- const esperado = c.fundo_centavos + (pagamentos.find(p => p.metodo === 'Dinheiro')?.valor || 0);
+ const recebimentos = db.prepare('SELECT metodo, SUM(valor_centavos) AS valor FROM crediario_pagamentos WHERE caixa_id=? GROUP BY metodo ORDER BY valor DESC').all(c.id);
+ const mov = db.prepare("SELECT COALESCE(SUM(CASE WHEN tipo='sangria' THEN valor_centavos END),0) AS sangrias, COALESCE(SUM(CASE WHEN tipo='suprimento' THEN valor_centavos END),0) AS suprimentos FROM movimentos_caixa WHERE caixa_id=?").get(c.id);
+ // Dinheiro na gaveta = fundo + vendas em dinheiro + crediário recebido em dinheiro + reforços - retiradas.
+ const emDinheiro = lista => lista.find(p => p.metodo === 'Dinheiro')?.valor || 0;
+ const esperado = c.fundo_centavos + emDinheiro(pagamentos) + emDinheiro(recebimentos) + mov.suprimentos - mov.sangrias;
  const contado = c.contado_centavos;
- return {vendas:vendas.qtd, total:reais(vendas.total), pagamentos:pagamentos.map(p => ({metodo:p.metodo, valor:reais(p.valor)})), dinheiroEsperado:reais(esperado), contado:contado == null ? null : reais(contado), diferenca:contado == null ? null : reais(contado - esperado)};
+ return {vendas:vendas.qtd, total:reais(vendas.total), pagamentos:pagamentos.map(p => ({metodo:p.metodo, valor:reais(p.valor)})),
+  recebimentosCrediario:recebimentos.map(p => ({metodo:p.metodo, valor:reais(p.valor)})), sangrias:reais(mov.sangrias), suprimentos:reais(mov.suprimentos),
+  dinheiroEsperado:reais(esperado), contado:contado == null ? null : reais(contado), diferenca:contado == null ? null : reais(contado - esperado)};
+}
+function movimentosCaixa(caixaId) {
+ return db.prepare('SELECT m.*, u.nome AS usuario FROM movimentos_caixa m JOIN usuarios u ON u.id=m.usuario_id WHERE m.caixa_id=? ORDER BY m.id').all(caixaId)
+  .map(m => ({id:m.id, tipo:m.tipo, valor:reais(m.valor_centavos), motivo:m.motivo, dataHora:m.data_hora, usuario:m.usuario}));
 }
 function caixaPublico(c, admin) {
  if (!c) return null;
- const base = {id:c.id, abertoEm:c.aberto_em, operador:c.operador, fundo:reais(c.fundo_centavos), fechadoEm:c.fechado_em, fechadoPor:c.fechado_por_nome || null};
+ const base = {id:c.id, abertoEm:c.aberto_em, operador:c.operador, fundo:reais(c.fundo_centavos), fechadoEm:c.fechado_em, fechadoPor:c.fechado_por_nome || null, movimentos:movimentosCaixa(c.id)};
  return admin ? {...base, observacao:c.observacao, resumo:resumoCaixa(c)} : base;
 }
 function abrirCaixa(ctx) {
@@ -174,8 +185,22 @@ function fecharCaixa(ctx) {
  const c = caixaAberto();
  if (!c) falha(409,'Não há caixa aberto.');
  db.prepare("UPDATE caixas SET fechado_em=datetime('now','localtime'), fechado_por=?, contado_centavos=?, observacao=? WHERE id=?").run(ctx.usuario.id, centavos(contado), texto(ctx.body.observacao, 200), c.id);
+ try { fazerBackup(); } catch(e) { console.error('Backup no fechamento falhou:', e.message); }
  // O atendente faz a contagem "às cegas": quem confere a diferença é o administrador.
  return {caixa:ctx.usuario.perfil === 'admin' ? caixaPublico(buscarCaixa(c.id), true) : null};
+}
+// Sangria: dinheiro que sai da gaveta (ex.: pagar fornecedor). Suprimento: dinheiro que entra (ex.: reforço de troco).
+function movimentarCaixa(ctx) {
+ const {tipo, valor} = ctx.body;
+ if (!['sangria','suprimento'].includes(tipo)) falha(400,'Escolha retirada (sangria) ou reforço (suprimento).');
+ if (typeof valor !== 'number' || !Number.isFinite(valor) || valor <= 0 || valor > 999999.99) falha(400,'Informe um valor maior que zero.');
+ const motivo = texto(ctx.body.motivo, 200);
+ if (tipo === 'sangria' && !motivo) falha(400,'Informe o motivo da retirada.');
+ const c = caixaAberto();
+ if (!c) falha(409,'Abra o caixa antes de registrar retiradas ou reforços.');
+ db.prepare('INSERT INTO movimentos_caixa (caixa_id,usuario_id,tipo,valor_centavos,motivo) VALUES (?,?,?,?,?)').run(c.id, ctx.usuario.id, tipo, centavos(valor), motivo);
+ ctx.status = 201;
+ return {caixa:caixaPublico(caixaAberto(), ctx.usuario.perfil === 'admin')};
 }
 function buscarCaixa(id) {
  return db.prepare('SELECT c.*, a.nome AS operador, f.nome AS fechado_por_nome FROM caixas c JOIN usuarios a ON a.id=c.aberto_por LEFT JOIN usuarios f ON f.id=c.fechado_por WHERE c.id=?').get(id);
@@ -183,7 +208,12 @@ function buscarCaixa(id) {
 
 // ---------- COMANDAS ----------
 function comandaVazia() { return {aberta:false, itens:[], adiantamento:0, desconto:0}; }
-function totalItemCentavos(item) { return Math.round(centavos(item.preco) * Math.round(item.qtd * 1000) / 1000); }
+// Adicionais são por unidade: 2 açaís com Nutella = 2 Nutellas. No item por kg, o adicional vai uma vez só.
+function baseItemCentavos(item) { return Math.round(centavos(item.preco) * Math.round(item.qtd * 1000) / 1000); }
+function multiplicadorAdicionais(item) { return item.unidade === 'KG' ? 1 : item.qtd; }
+function totalItemCentavos(item) {
+ return baseItemCentavos(item) + (item.adicionais || []).reduce((s, a) => s + centavos(a.preco) * a.qtd, 0) * multiplicadorAdicionais(item);
+}
 function numeroComanda(valor) {
  const n = Number(valor);
  if (!Number.isInteger(n) || n < 1 || n > TOTAL_COMANDAS) falha(400,'Comanda inválida.');
@@ -211,7 +241,13 @@ function validarComanda(c) {
   if (!nome) falha(400,'Item sem nome na comanda.');
   if (typeof i.preco !== 'number' || !Number.isFinite(i.preco) || i.preco < 0 || i.preco > 999999.99) falha(400,`Preço inválido em ${nome}.`);
   if (!quantidadeValida(i.qtd, unidade)) falha(400,`Quantidade inválida em ${nome}.`);
-  return {id:Number.isInteger(i.id) ? i.id : null, codigo:texto(i.codigo, 40), nome, preco:i.preco, unidade, categoria:texto(i.categoria, 80), codigoBarras:texto(i.codigoBarras, 80), requerCozinha:i.requerCozinha === true, ativo:true, qtd:i.qtd, obs:texto(i.obs, 200), impresso:i.impresso === true};
+  if (i.adicionais !== undefined && (!Array.isArray(i.adicionais) || i.adicionais.length > 20)) falha(400,`Adicionais inválidos em ${nome}.`);
+  const adicionais = (i.adicionais || []).map(a => {
+   const nomeAdicional = texto(a?.nome, 120);
+   if (!nomeAdicional || typeof a.preco !== 'number' || !Number.isFinite(a.preco) || a.preco < 0 || a.preco > 9999.99 || !Number.isInteger(a.qtd) || a.qtd < 1 || a.qtd > 20) falha(400,`Adicional inválido em ${nome}.`);
+   return {id:Number.isInteger(a.id) ? a.id : null, codigo:texto(a.codigo, 40), nome:nomeAdicional, categoria:texto(a.categoria, 80), preco:a.preco, qtd:a.qtd};
+  });
+  return {uid:typeof i.uid === 'string' && /^[a-z0-9]{6,24}$/.test(i.uid) ? i.uid : null, id:Number.isInteger(i.id) ? i.id : null, codigo:texto(i.codigo, 40), nome, preco:i.preco, unidade, categoria:texto(i.categoria, 80), codigoBarras:texto(i.codigoBarras, 80), requerCozinha:i.requerCozinha === true, aceitaAdicionais:i.aceitaAdicionais === true, ativo:true, qtd:i.qtd, obs:texto(i.obs, 200), impresso:i.impresso === true, adicionais};
  });
  const adiantamento = Number(c.adiantamento || 0), desconto = Number(c.desconto || 0);
  if (![adiantamento, desconto].every(v => Number.isFinite(v) && v >= 0)) falha(400,'Valores da comanda inválidos.');
@@ -223,13 +259,36 @@ function salvarComandas(ctx) {
  const recebidas = ctx.body.comandas;
  if (!recebidas || typeof recebidas !== 'object' || Array.isArray(recebidas)) falha(400,'Dados das comandas inválidos.');
  const validas = Object.entries(recebidas).map(([n, c]) => [numeroComanda(n), validarComanda(c)]);
+ const t = ctx.body.transferencia;
+ const transferencia = t && Number.isInteger(t.origem) && Number.isInteger(t.destino) ? {origem:t.origem, destino:t.destino} : null;
  transacao(() => {
   for (const [n, c] of validas) {
+   registrarRetiradas(ctx.usuario, n, lerComanda(n), c, transferencia);
    if (!c.aberta) db.prepare('DELETE FROM comandas WHERE numero=?').run(n);
    else db.prepare("INSERT INTO comandas (numero,dados) VALUES (?,?) ON CONFLICT(numero) DO UPDATE SET dados=excluded.dados, atualizado_em=datetime('now','localtime')").run(n, JSON.stringify(c));
   }
  });
  return {ok:true};
+}
+// Guarda quem tirou itens de uma comanda (ou transferiu), para o administrador consultar. Não bloqueia nada.
+function registrarRetiradas(usuario, numero, antiga, nova, transferencia) {
+ const atuais = new Map(nova.itens.filter(i => i.uid).map(i => [i.uid, i]));
+ for (const item of antiga.itens) {
+  if (!item.uid) continue;
+  const restante = atuais.get(item.uid)?.qtd || 0;
+  const retirado = Math.round((item.qtd - restante) * 1000) / 1000;
+  if (retirado <= 0) continue;
+  const transferiu = transferencia?.origem === numero;
+  const quantidade = item.unidade === 'KG' ? `${retirado.toLocaleString('pt-BR', {minimumFractionDigits:3})} kg` : `${retirado}x`;
+  db.prepare('INSERT INTO registro_comandas (usuario_id,comanda,acao,descricao,enviado_cozinha) VALUES (?,?,?,?,?)')
+   .run(usuario.id, numero, transferiu ? 'transferiu' : 'removeu', `${quantidade} ${item.nome}${transferiu ? ` para a comanda ${transferencia.destino}` : ''}`, Number(item.impresso === true));
+ }
+}
+function listarRegistro(ctx) {
+ const inicio = dataParam(ctx.url.searchParams.get('inicio')) || hoje();
+ const fim = dataParam(ctx.url.searchParams.get('fim')) || inicio;
+ return db.prepare('SELECT r.*, u.nome AS usuario FROM registro_comandas r JOIN usuarios u ON u.id=r.usuario_id WHERE date(r.data_hora) BETWEEN ? AND ? ORDER BY r.id DESC LIMIT 1000').all(inicio, fim)
+  .map(r => ({dataHora:r.data_hora, usuario:r.usuario, comanda:r.comanda, acao:r.acao, descricao:r.descricao, enviadoCozinha:!!r.enviado_cozinha}));
 }
 
 // ---------- VENDAS ----------
@@ -265,8 +324,13 @@ function registrarVenda(ctx) {
   // total_centavos é o faturamento da venda (itens menos desconto); o adiantamento é só uma forma de pagamento.
   const vendaId = Number(db.prepare('INSERT INTO vendas (caixa_id,usuario_id,comanda,subtotal_centavos,desconto_centavos,adiantamento_centavos,total_centavos,recebido_centavos,troco_centavos,cliente,status) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
    .run(caixa.id, usuario.id, numero, subtotal, desconto, adiantamento, subtotal - desconto, informado, troco, crediario ? cliente : '', status).lastInsertRowid);
-  const inserirItem = db.prepare('INSERT INTO venda_itens (venda_id,produto_id,codigo,nome,categoria,unidade,quantidade,preco_centavos,total_centavos,observacao) VALUES (?,?,?,?,?,?,?,?,?,?)');
-  for (const i of c.itens) inserirItem.run(vendaId, i.id, i.codigo || '', i.nome, i.categoria || '', i.unidade || 'UN', i.qtd, centavos(i.preco), totalItemCentavos(i), i.obs || '');
+  const inserirItem = db.prepare('INSERT INTO venda_itens (venda_id,produto_id,codigo,nome,categoria,unidade,quantidade,preco_centavos,total_centavos,observacao,adicional_de) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+  for (const i of c.itens) {
+   const paiId = Number(inserirItem.run(vendaId, i.id, i.codigo || '', i.nome, i.categoria || '', i.unidade || 'UN', i.qtd, centavos(i.preco), baseItemCentavos(i), i.obs || '', null).lastInsertRowid);
+   // Cada adicional vira uma linha própria, ligada ao item: assim o relatório conta quantas Nutellas saíram.
+   const vezes = multiplicadorAdicionais(i);
+   for (const a of i.adicionais || []) inserirItem.run(vendaId, a.id, a.codigo || '', a.nome, a.categoria || '', 'UN', a.qtd * vezes, centavos(a.preco), centavos(a.preco) * a.qtd * vezes, '', paiId);
+  }
   const inserirPagamento = db.prepare('INSERT INTO venda_pagamentos (venda_id,metodo,valor_centavos) VALUES (?,?,?)');
   if (adiantamento) inserirPagamento.run(vendaId, 'Adiantamento', adiantamento);
   for (const p of pagamentos) {
@@ -285,8 +349,15 @@ function vendaPublica(v) {
   adiantamento:reais(v.adiantamento_centavos), valor:reais(v.total_centavos), recebido:reais(v.recebido_centavos), troco:reais(v.troco_centavos),
   cliente:v.cliente, status:v.status, cancelada:!!v.cancelada, motivoCancelamento:v.motivo_cancelamento,
   pagamentos:db.prepare('SELECT metodo, valor_centavos FROM venda_pagamentos WHERE venda_id=? ORDER BY id').all(v.id).map(p => ({metodo:p.metodo, valor:reais(p.valor_centavos)})),
-  itens:db.prepare('SELECT * FROM venda_itens WHERE venda_id=? ORDER BY id').all(v.id).map(i => ({nome:i.nome, qtd:i.quantidade, unidade:i.unidade, preco:reais(i.preco_centavos), total:reais(i.total_centavos), obs:i.observacao}))
+  itens:itensDaVenda(v.id)
  };
+}
+function itensDaVenda(vendaId) {
+ const linhas = db.prepare('SELECT * FROM venda_itens WHERE venda_id=? ORDER BY id').all(vendaId);
+ const itens = new Map();
+ for (const i of linhas.filter(l => !l.adicional_de)) itens.set(i.id, {nome:i.nome, qtd:i.quantidade, unidade:i.unidade, preco:reais(i.preco_centavos), total:reais(i.total_centavos), obs:i.observacao, adicionais:[]});
+ for (const a of linhas.filter(l => l.adicional_de)) itens.get(a.adicional_de)?.adicionais.push({nome:a.nome, qtd:a.quantidade, preco:reais(a.preco_centavos), total:reais(a.total_centavos)});
+ return [...itens.values()];
 }
 function listarVendas(ctx) {
  let filtro, params;
@@ -308,6 +379,118 @@ function cancelarVenda(ctx) {
  const r = db.prepare("UPDATE vendas SET cancelada=1, cancelada_em=datetime('now','localtime'), cancelada_por=?, motivo_cancelamento=? WHERE id=? AND cancelada=0").run(ctx.usuario.id, motivo, Number(ctx.params[0]));
  if (!r.changes) falha(404,'Venda não encontrada ou já cancelada.');
  return {ok:true};
+}
+
+// ---------- CREDIÁRIO ----------
+// O que cada cliente ainda deve: parte da venda paga no crediário menos o que já foi recebido depois.
+const chaveCliente = nome => nome.trim().toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+function vendasEmAberto() {
+ return db.prepare(`SELECT v.id, v.cliente, v.data_hora, v.comanda,
+  (SELECT COALESCE(SUM(valor_centavos),0) FROM venda_pagamentos WHERE venda_id=v.id AND metodo='Crediário') AS credito,
+  (SELECT COALESCE(SUM(valor_centavos),0) FROM crediario_pagamentos WHERE venda_id=v.id) AS pago
+  FROM vendas v WHERE v.cancelada=0 AND v.cliente<>'' ORDER BY v.id`).all().filter(v => v.credito > v.pago);
+}
+function listarCrediario() {
+ const clientes = new Map();
+ for (const v of vendasEmAberto()) {
+  const chave = chaveCliente(v.cliente);
+  if (!clientes.has(chave)) clientes.set(chave, {cliente:v.cliente, saldo:0, vendas:[]});
+  const c = clientes.get(chave);
+  c.saldo += v.credito - v.pago;
+  c.vendas.push({id:v.id, dataHora:v.data_hora, comanda:v.comanda, valor:reais(v.credito), pago:reais(v.pago), saldo:reais(v.credito - v.pago)});
+ }
+ return [...clientes.values()].map(c => ({...c, saldo:reais(c.saldo)})).sort((a, b) => b.saldo - a.saldo);
+}
+function receberCrediario(ctx) {
+ const {cliente, valor, metodo} = ctx.body;
+ if (typeof cliente !== 'string' || !cliente.trim()) falha(400,'Escolha o cliente.');
+ if (!['Dinheiro','Pix','Débito','Crédito'].includes(metodo)) falha(400,'Escolha a forma de pagamento.');
+ if (typeof valor !== 'number' || !Number.isFinite(valor) || valor <= 0) falha(400,'Informe um valor maior que zero.');
+ let restante = centavos(valor);
+ transacao(() => {
+  const caixa = caixaAberto();
+  if (!caixa) falha(409,'Abra o caixa antes de receber.');
+  const abertas = vendasEmAberto().filter(v => chaveCliente(v.cliente) === chaveCliente(cliente));
+  const saldo = abertas.reduce((s, v) => s + v.credito - v.pago, 0);
+  if (!saldo) falha(404,'Este cliente não tem nada a pagar.');
+  if (restante > saldo) falha(400,`O valor passa do que o cliente deve (${(saldo / 100).toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}).`);
+  // Abate primeiro as compras mais antigas.
+  for (const v of abertas) {
+   if (!restante) break;
+   const parte = Math.min(restante, v.credito - v.pago);
+   db.prepare('INSERT INTO crediario_pagamentos (venda_id,caixa_id,usuario_id,metodo,valor_centavos) VALUES (?,?,?,?,?)').run(v.id, caixa.id, ctx.usuario.id, metodo, parte);
+   if (parte === v.credito - v.pago) db.prepare("UPDATE vendas SET status='Quitado' WHERE id=?").run(v.id);
+   restante -= parte;
+  }
+ });
+ return {clientes:listarCrediario()};
+}
+
+// ---------- BACKUP ----------
+// Uma cópia por dia em data/backups (guarda as últimas 30) e, se configurada, outra numa pasta extra
+// (pen drive ou pasta do Google Drive), para não perder tudo se o computador estragar.
+const pastaBackups = process.env.BACKUP_DIR || path.join(path.dirname(databasePath), 'backups');
+const ARQUIVO_BACKUP = /^produtos-\d{4}-\d{2}-\d{2}\.db$/;
+function lerConfiguracao(chave, padrao) {
+ const row = db.prepare('SELECT valor FROM configuracao WHERE chave=?').get(chave);
+ return row ? JSON.parse(row.valor) : padrao;
+}
+function gravarConfiguracao(chave, valor) {
+ db.prepare('INSERT INTO configuracao (chave,valor) VALUES (?,?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor').run(chave, JSON.stringify(valor));
+}
+function fazerBackup() {
+ fs.mkdirSync(pastaBackups, {recursive:true});
+ const nome = `produtos-${hoje()}.db`;
+ const destino = path.join(pastaBackups, nome);
+ const temporario = destino + '.tmp';
+ fs.rmSync(temporario, {force:true});
+ db.exec(`VACUUM INTO '${temporario.replace(/'/g, "''")}'`);
+ fs.renameSync(temporario, destino);
+ const arquivos = fs.readdirSync(pastaBackups).filter(f => ARQUIVO_BACKUP.test(f)).sort();
+ for (const velho of arquivos.slice(0, -30)) fs.rmSync(path.join(pastaBackups, velho), {force:true});
+ const {pastaExtra = ''} = lerConfiguracao('backup', {});
+ let erroExtra = '';
+ if (pastaExtra) {
+  try { fs.copyFileSync(destino, path.join(pastaExtra, nome)); }
+  catch(e) { erroExtra = `Não foi possível copiar para a pasta extra (${e.code === 'ENOENT' ? 'pasta não encontrada: o pen drive está conectado?' : e.message}).`; }
+ }
+ const status = {ultimo:db.prepare("SELECT datetime('now','localtime') AS d").get().d, arquivo:nome, erroExtra};
+ gravarConfiguracao('backup_status', status);
+ return status;
+}
+function backupDoDia() {
+ const status = lerConfiguracao('backup_status', {});
+ if (!status.ultimo || status.ultimo.slice(0, 10) !== hoje()) {
+  try { fazerBackup(); } catch(e) { console.error('Backup automático falhou:', e.message); }
+ }
+}
+setTimeout(backupDoDia, 5000).unref();
+setInterval(backupDoDia, 60 * 60 * 1000).unref();
+function infoBackup() {
+ fs.mkdirSync(pastaBackups, {recursive:true});
+ const arquivos = fs.readdirSync(pastaBackups).filter(f => ARQUIVO_BACKUP.test(f)).sort().reverse()
+  .map(f => ({nome:f, tamanho:fs.statSync(path.join(pastaBackups, f)).size}));
+ return {pasta:pastaBackups, pastaExtra:lerConfiguracao('backup', {}).pastaExtra || '', status:lerConfiguracao('backup_status', null), arquivos};
+}
+function configurarBackup(ctx) {
+ const pastaExtra = texto(ctx.body.pastaExtra, 400);
+ if (pastaExtra) {
+  if (!path.isAbsolute(pastaExtra)) falha(400,'Informe o caminho completo da pasta, por exemplo E:\\Backup ou C:\\Users\\voce\\Google Drive\\Backup.');
+  let ok = false;
+  try { ok = fs.statSync(pastaExtra).isDirectory(); } catch {}
+  if (!ok) falha(400,'Pasta não encontrada. Confira o caminho (e se o pen drive está conectado).');
+ }
+ gravarConfiguracao('backup', {pastaExtra});
+ return infoBackup();
+}
+function baixarBackup(ctx) {
+ const nome = ctx.url.searchParams.get('arquivo') || '';
+ if (!ARQUIVO_BACKUP.test(nome)) falha(400,'Arquivo inválido.');
+ const caminho = path.join(pastaBackups, nome);
+ if (!fs.existsSync(caminho)) falha(404,'Backup não encontrado.');
+ ctx.res.writeHead(200, {'Content-Type':'application/octet-stream', 'Content-Disposition':`attachment; filename="${nome}"`, 'Cache-Control':'no-store'});
+ ctx.res.end(fs.readFileSync(caminho));
+ ctx.respondido = true;
 }
 
 // ---------- RELATÓRIOS ----------
@@ -556,7 +739,15 @@ const rotas = [
  ['POST', /^\/api\/imprimir$/, 'logado', imprimir],
  ['GET', /^\/api\/impressoras\/fila$/, 'logado', filaPublica],
  ['POST', /^\/api\/impressoras\/fila\/(\d+)\/(reenviar|descartar)$/, 'logado', acaoFila],
- ['GET', /^\/api\/impressoras\/procurar$/, 'admin', procurarImpressoras]
+ ['GET', /^\/api\/impressoras\/procurar$/, 'admin', procurarImpressoras],
+ ['POST', /^\/api\/caixa\/movimento$/, 'logado', movimentarCaixa],
+ ['GET', /^\/api\/crediario$/, 'logado', listarCrediario],
+ ['POST', /^\/api\/crediario\/receber$/, 'logado', receberCrediario],
+ ['GET', /^\/api\/registro$/, 'admin', listarRegistro],
+ ['GET', /^\/api\/backup$/, 'admin', infoBackup],
+ ['PUT', /^\/api\/backup$/, 'admin', configurarBackup],
+ ['POST', /^\/api\/backup\/agora$/, 'admin', () => { fazerBackup(); return infoBackup(); }],
+ ['GET', /^\/api\/backup\/baixar$/, 'admin', baixarBackup]
 ];
 
 function json(res,status,body) { res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}); res.end(JSON.stringify(body)); }
@@ -582,7 +773,8 @@ async function responderApi(req, res, url) {
    if (acesso === 'admin' && usuario.perfil !== 'admin') falha(403,'Apenas o administrador pode fazer isso.');
    const ctx = {req, res, url, usuario, body, params:match.slice(1), status:200};
    const resposta = await acao(ctx);
-   return json(res, ctx.status, resposta);
+   if (!ctx.respondido) json(res, ctx.status, resposta);
+   return;
   } catch(e) {
    if (e instanceof ErroHttp) return json(res, e.status, {erro:e.message});
    throw e;

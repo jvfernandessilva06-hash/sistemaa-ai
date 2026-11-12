@@ -104,6 +104,60 @@ function cliente() {
  const depois = (await admin('/api/relatorios')).body.resumo;
  assert.equal(depois.vendas, 0); assert.equal(depois.canceladas, 1);
 
+ // Segundo caixa: adicionais, registro de itens retirados, crediário, sangria e suprimento.
+ assert.equal((await atendente('/api/caixa/abrir','POST',{fundo:50})).status, 201);
+ const nutella = produtos.find(p => p.codigo === '202'), ninho = produtos.find(p => p.codigo === '201'), agua = produtos.find(p => p.codigo === '301');
+ assert.equal(nutella.adicional, true); assert.equal(acai500.aceitaAdicionais, true);
+ const ad = p => ({id:p.id, codigo:p.codigo, nome:p.nome, categoria:p.categoria, preco:p.preco, qtd:1});
+ const itemA = {...acai500, uid:'aaaaaa1', qtd:2, obs:'', impresso:true, adicionais:[ad(nutella), ad(ninho)]};
+ const itemB = {...kg.body, uid:'bbbbbb2', qtd:0.3, obs:'', impresso:false, adicionais:[ad(nutella)]};
+ const itemC = {...agua, uid:'cccccc3', qtd:1, obs:'', impresso:false};
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{4:{aberta:true,itens:[itemA,itemB,itemC],adiantamento:0,desconto:0}}})).status, 200);
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{4:{aberta:true,itens:[itemA,{...itemB,adicionais:[{...ad(nutella),qtd:99}]}],adiantamento:0,desconto:0}}})).status, 400);
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{4:{aberta:true,itens:[itemA,itemB],adiantamento:0,desconto:0}}})).status, 200);
+ assert.equal((await atendente('/api/registro')).status, 403);
+ const registro = (await admin('/api/registro')).body;
+ assert.equal(registro[0].descricao, '1x Água sem Gás'); assert.equal(registro[0].usuario, 'Ana'); assert.equal(registro[0].acao, 'removeu');
+ // 2 x (18,00 + 5,00 + 3,50) = 53,00; 0,300 kg x 49,90 = 14,97 + 5,00 = 19,97; total 72,97.
+ const vendaAdicionais = await atendente('/api/vendas','POST',{comanda:4,desconto:0,pagamentos:[{metodo:'Pix',valor:7297}]});
+ assert.equal(vendaAdicionais.status, 201, JSON.stringify(vendaAdicionais.body));
+ assert.equal(vendaAdicionais.body.subtotal, 72.97);
+ assert.deepEqual(vendaAdicionais.body.itens[0].adicionais.map(a => [a.nome, a.qtd, a.total]), [['Nutella', 2, 10], ['Leite Ninho', 2, 7]]);
+ assert.equal((await admin('/api/relatorios')).body.produtos.find(p => p.nome === 'Nutella').quantidade, 3, 'adicionais contam no relatório');
+
+ // Crediário: deve 4,00, paga 1,50 em dinheiro e 2,50 no Pix (nome escrito diferente é o mesmo cliente).
+ await atendente('/api/comandas','PUT',{comandas:{5:{aberta:true,itens:[{...itemC,uid:'dddddd4'}],adiantamento:0,desconto:0}}});
+ const fiado = await atendente('/api/vendas','POST',{comanda:5,desconto:0,pagamentos:[{metodo:'Crediário',valor:400}],cliente:'Maria Silva'});
+ assert.equal(fiado.body.status, 'A receber');
+ assert.deepEqual((await atendente('/api/crediario')).body.map(c => [c.cliente, c.saldo]), [['Maria Silva', 4]]);
+ assert.deepEqual((await atendente('/api/crediario/receber','POST',{cliente:'maria silva ',valor:1.5,metodo:'Dinheiro'})).body.clientes.map(c => c.saldo), [2.5]);
+ assert.equal((await atendente('/api/crediario/receber','POST',{cliente:'Maria Silva',valor:3,metodo:'Pix'})).status, 400, 'não recebe mais do que deve');
+ assert.deepEqual((await atendente('/api/crediario/receber','POST',{cliente:'Maria Silva',valor:2.5,metodo:'Pix'})).body.clientes, []);
+ assert.equal((await admin('/api/vendas')).body.find(v => v.id === fiado.body.id).status, 'Quitado');
+
+ // Sangria e suprimento entram no dinheiro esperado: 50 + 1,50 (crediário) + 5 - 10 = 46,50.
+ assert.equal((await atendente('/api/caixa/movimento','POST',{tipo:'sangria',valor:10,motivo:''})).status, 400, 'retirada precisa de motivo');
+ assert.equal((await atendente('/api/caixa/movimento','POST',{tipo:'sangria',valor:10,motivo:'Pagou o gelo'})).status, 201);
+ const suprimento = await atendente('/api/caixa/movimento','POST',{tipo:'suprimento',valor:5,motivo:''});
+ assert.equal(suprimento.body.caixa.movimentos.length, 2); assert.equal(suprimento.body.caixa.resumo, undefined);
+ await atendente('/api/caixa/fechar','POST',{contado:46.5,observacao:''});
+ const caixa2 = (await admin('/api/caixas')).body[0].resumo;
+ assert.equal(caixa2.dinheiroEsperado, 46.5); assert.equal(caixa2.diferenca, 0); assert.equal(caixa2.sangrias, 10);
+
+ // Backup: cópia do banco, download e pasta extra.
+ assert.equal((await atendente('/api/backup')).status, 403);
+ const backup = (await admin('/api/backup/agora','POST',{})).body;
+ assert.equal(backup.arquivos.length, 1); assert.equal(backup.status.erroExtra, '');
+ const baixado = await fetch(url + '/api/backup/baixar?arquivo=' + backup.arquivos[0].nome, {headers:{Cookie:(await admin('/api/me'), '')}});
+ assert.equal(baixado.status, 401, 'download exige login');
+ assert.equal((await admin('/api/backup','PUT',{pastaExtra:'pasta-relativa'})).status, 400);
+ const extra = fs.mkdtempSync(path.join(os.tmpdir(),'acai-extra-'));
+ assert.equal((await admin('/api/backup','PUT',{pastaExtra:extra})).status, 200);
+ await admin('/api/backup/agora','POST',{});
+ const copia = fs.readdirSync(extra);
+ assert.equal(copia.length, 1); assert.ok(fs.readFileSync(path.join(extra, copia[0])).subarray(0, 15).toString() === 'SQLite format 3', 'cópia é um banco SQLite');
+ fs.rmSync(extra, {recursive:true, force:true});
+
  // Impressão: uma impressora de rede falsa recebe os comandos ESC/POS.
  const recebido = [];
  // A busca na rede também conecta na porta sem mandar nada: essas conexões vazias são ignoradas.
@@ -160,6 +214,6 @@ function cliente() {
  const reaberto = cliente();
  assert.equal((await reaberto('/api/login','POST',{login:'dono',senha:'senha-forte'})).status, 200);
  assert.equal((await reaberto('/api/produtos')).body.length, 7);
- assert.equal((await reaberto('/api/vendas?inicio=2000-01-01&fim=2100-01-01')).body.length, 1);
+ assert.equal((await reaberto('/api/vendas?inicio=2000-01-01&fim=2100-01-01')).body.length, 3);
  console.log('Todos os testes passaram.');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{await stop();fs.rmSync(temporary,{recursive:true,force:true});});

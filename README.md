@@ -10,17 +10,34 @@ Não é necessário instalar bibliotecas. O servidor usa Node.js 22.13 ou superi
 
 Tudo fica no banco SQLite `data/produtos.db`, criado automaticamente neste computador: produtos, usuários, comandas abertas, vendas, pagamentos e caixas. Fechar o navegador ou reiniciar o computador não apaga nada.
 
-Para fazer backup, encerre o servidor e copie a pasta `data` para um local seguro (pen drive, Google Drive). O arquivo do banco não deve ser publicado junto com o código.
+O arquivo do banco não deve ser publicado junto com o código.
+
+### Backup automático
+
+Todo dia (e a cada fechamento de caixa) o sistema guarda uma cópia completa em `data/backups`, mantendo as últimas 30. Em **Configurações → Backup**, escolha também uma **pasta extra** (pen drive ou pasta do Google Drive para computador) para ter uma cópia fora do computador. As cópias também podem ser baixadas por ali.
+
+Para restaurar: feche o sistema, copie o arquivo do backup para `data/produtos.db` (substituindo o atual) e abra de novo.
 
 ## Perfis de acesso
 
 | | Atendente | Administrador |
 |---|---|---|
 | Comandas, pagamento, transferência | ✓ | ✓ |
-| Abrir e fechar o caixa | ✓ (contagem às cegas) | ✓ (vê a diferença) |
-| Histórico | Só do caixa aberto | Qualquer período, com cancelamento |
+| Abrir e fechar o caixa, retiradas e reforços | ✓ (contagem às cegas) | ✓ (vê a diferença) |
+| Crediário: ver quem deve e receber | ✓ | ✓ |
+| Histórico | Só do caixa aberto | Qualquer período, com cancelamento e itens retirados |
 | Relatórios | — | ✓ |
-| Produtos e usuários | — | ✓ |
+| Produtos, usuários e configurações | — | ✓ |
+
+## Adicionais
+
+No cadastro de produtos, marque **"É um adicional"** nos complementos (Nutella, granola, leite Ninho…) e **"Pede adicionais ao lançar"** nos produtos que recebem complementos (açaí). Ao lançar um açaí na comanda, abre a escolha de adicionais; o item fica como "Açaí 500ml + Nutella + Granola", com um preço só, e assim sai na cozinha. Adicionais contam por unidade (2 açaís com Nutella = 2 Nutellas) e aparecem no relatório de produtos.
+
+## Caixa e crediário
+
+- **Retirada (sangria)** e **reforço (suprimento)** ficam registrados no fechamento e entram no dinheiro esperado.
+- **Crediário:** a aba mostra quem deve quanto. Ao receber, o valor abate primeiro as compras mais antigas e entra no caixa aberto pela forma de pagamento escolhida.
+- **Itens retirados:** tudo que for removido ou transferido de uma comanda fica registrado (quem, quando, o quê e se já tinha ido para a cozinha). Não pede senha; o administrador consulta no Histórico.
 
 ## Relatórios
 
@@ -30,7 +47,7 @@ As categorias vêm do cadastro de produtos: preencha a categoria de cada produto
 
 ## Impressão
 
-Na aba **Impressoras** (administrador) configure a impressora da **cozinha** (pedidos) e a do **caixa** (comprovante, que não é documento fiscal). Cada uma pode imprimir de três formas:
+Em **Configurações → Impressoras** (administrador) configure a impressora da **cozinha** (pedidos) e a do **caixa** (comprovante, que não é documento fiscal). Cada uma pode imprimir de três formas:
 
 - **Janela do navegador:** funciona com qualquer impressora instalada no Windows.
 - **Impressora de rede:** informe o IP; o sistema envia comandos ESC/POS direto pela porta 9100.
@@ -52,6 +69,6 @@ Dê dois cliques em `inicio-automatico.bat` uma vez. A partir daí, sempre que o
 - Produtos inativos permanecem cadastrados, mas saem da busca e dos atalhos de venda. Alterar o cadastro não muda itens já lançados nas comandas.
 - Para produtos por kg, informe o peso em kg na comanda (ex.: 0,350 para 350 g). Valores são arredondados em centavos por item.
 - O faturamento de uma venda é o valor dos itens menos o desconto. Adiantamentos aparecem como forma de pagamento.
-- O fechamento compara o dinheiro contado com o esperado (fundo de troco + vendas em dinheiro).
+- O fechamento compara o dinheiro contado com o esperado (fundo de troco + vendas e crediário recebidos em dinheiro + reforços − retiradas).
 
 Verificação: `node test.cjs` usa um banco temporário e não altera os dados reais.

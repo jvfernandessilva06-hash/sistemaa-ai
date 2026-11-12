@@ -9,8 +9,8 @@
 <body>
 
     <!-- TELA 0: LOGIN / PRIMEIRO ACESSO -->
-    <div id="screen-login" class="screen active">
-        <div class="landing-card login-card">
+    <main id="screen-login" class="screen active">
+        <div class="login-card">
             <h1>Sistema Açaí PDV</h1>
             <form id="form-login" onsubmit="event.preventDefault(); fazerLogin()">
                 <p>Entre com seu usuário para continuar.</p>
@@ -29,87 +29,97 @@
                 <button class="btn btn-primary btn-lg full-width" type="submit">Criar administrador e entrar</button>
             </form>
         </div>
-    </div>
+    </main>
 
     <!-- TELA PRINCIPAL DO SISTEMA (APP) -->
     <div id="screen-app" class="screen">
-        <!-- BARRA DE NAVEGAÇÃO -->
-        <nav class="navbar">
-            <div class="navbar-brand" onclick="trocarAba('pdv')" style="cursor:pointer;" title="Ir para a frente de caixa">
-                Açaí PDV <small id="status-caixa-badge" class="badge-caixa">Caixa Fechado</small>
-            </div>
-            <ul class="navbar-menu">
-                <li><a href="#" id="nav-pdv" class="active" onclick="trocarAba('pdv')">Frente de Caixa</a></li>
-                <li><a href="#" id="nav-historico" onclick="trocarAba('historico')">Histórico</a></li>
-                <li><a href="#" id="nav-caixa" onclick="trocarAba('caixa')">Fechamento</a></li>
-                <li class="so-admin"><a href="#" id="nav-relatorios" onclick="trocarAba('relatorios')">Relatórios</a></li>
-                <li class="so-admin"><a href="#" id="nav-cardapio" onclick="trocarAba('cardapio')">Produtos</a></li>
-                <li class="so-admin"><a href="#" id="nav-usuarios" onclick="trocarAba('usuarios')">Usuários</a></li>
-                <li class="so-admin"><a href="#" id="nav-impressoras" onclick="trocarAba('impressoras')">Impressoras</a></li>
-            </ul>
-            <div class="navbar-user"><button id="fila-badge" class="fila-badge" type="button" hidden onclick="abrirFila()"></button><span id="usuario-nome"></span><button class="btn btn-secondary btn-sm" onclick="sair()">Sair</button></div>
-        </nav>
+        <header class="navbar">
+            <button type="button" class="navbar-brand" onclick="trocarAba('pdv')" title="Ir para a frente de caixa">
+                Açaí PDV <span id="status-caixa-badge" class="badge-caixa">Caixa fechado</span>
+            </button>
+            <nav aria-label="Menu principal">
+                <ul class="navbar-menu">
+                    <li><button type="button" id="nav-pdv" onclick="trocarAba('pdv')">Frente de Caixa</button></li>
+                    <li><button type="button" id="nav-historico" onclick="trocarAba('historico')">Histórico</button></li>
+                    <li><button type="button" id="nav-caixa" onclick="trocarAba('caixa')">Fechamento</button></li>
+                    <li><button type="button" id="nav-crediario" onclick="trocarAba('crediario')">Crediário</button></li>
+                    <li class="so-admin"><button type="button" id="nav-relatorios" onclick="trocarAba('relatorios')">Relatórios</button></li>
+                    <li class="so-admin"><button type="button" id="nav-cardapio" onclick="trocarAba('cardapio')">Produtos</button></li>
+                    <li class="so-admin"><button type="button" id="nav-usuarios" onclick="trocarAba('usuarios')">Usuários</button></li>
+                    <li class="so-admin"><button type="button" id="nav-impressoras" onclick="trocarAba('impressoras')">Configurações</button></li>
+                </ul>
+            </nav>
+            <div class="navbar-user"><button id="fila-badge" class="fila-badge" type="button" hidden onclick="abrirFila()"></button><span id="usuario-nome"></span><button class="btn btn-secondary btn-sm" type="button" onclick="sair()">Sair</button></div>
+        </header>
 
-        <div class="app-container">
+        <main class="app-container">
             <!-- ABA: FRENTE DE CAIXA -->
-            <div id="view-pdv" class="view-section active">
-                <div class="sidebar-left">
-                    <div class="panel-header">Comandas Abertas</div>
-                    <div class="panel-content"><ul class="item-list" id="lista-abertas"></ul></div>
-                </div>
-
+            <section id="view-pdv" class="view-section active" aria-label="Frente de caixa">
                 <div class="main-panel">
                     <div class="top-bar">
-                        <button class="btn btn-primary" onclick="abrirNovaComandaRapida()">+ Criar / Abrir Comanda</button>
+                        <button class="btn btn-primary" type="button" onclick="abrirNovaComandaRapida()">+ Abrir comanda</button>
                         <select id="filtro-comandas" aria-label="Filtrar comandas" onchange="renderizarGrid()"><option value="todas">Todas as comandas</option><option value="abertas">Em consumo</option><option value="livres">Livres</option></select>
                     </div>
-                    <div class="grid-header">Mapa de Comandas (1 ao 50)</div>
+                    <h2 class="grid-header">Comandas (1 a 50)</h2>
                     <div class="comandas-grid" id="comandas-grid"></div>
                 </div>
-
-                <div class="sidebar-right">
-                    <div class="panel-header">Últimas vendas</div>
+                <aside class="sidebar-right" aria-label="Últimas vendas">
+                    <h2 class="panel-header">Últimas vendas</h2>
                     <div class="panel-content"><ul class="item-list" id="lista-pagas"></ul></div>
-                </div>
-            </div>
+                </aside>
+            </section>
 
             <!-- ABA: HISTÓRICO -->
-            <div id="view-historico" class="view-section"><div class="view-content-box">
-                <h2>Histórico de Vendas</h2><p id="historico-descricao" class="field-help"></p>
+            <section id="view-historico" class="view-section" aria-labelledby="titulo-historico"><div class="view-content-box">
+                <h2 id="titulo-historico">Histórico de Vendas</h2><p id="historico-descricao" class="field-help"></p>
                 <form class="filtros so-admin" onsubmit="event.preventDefault(); renderizarHistorico()">
                     <label>De <input type="date" id="historico-inicio"></label>
                     <label>Até <input type="date" id="historico-fim"></label>
                     <button class="btn btn-primary" type="submit">Buscar</button>
                 </form>
-                <div id="historico-list" style="margin-top:15px;"></div>
-            </div></div>
+                <div id="historico-list" class="bloco"></div>
+                <div class="so-admin">
+                    <h3 class="subtitulo">Itens retirados das comandas</h3>
+                    <p class="field-help">Tudo que foi removido ou transferido de uma comanda no período, com quem fez. Itens que já tinham ido para a cozinha aparecem marcados.</p>
+                    <div id="registro-list" class="bloco"></div>
+                </div>
+            </div></section>
+
+            <!-- ABA: CREDIÁRIO -->
+            <section id="view-crediario" class="view-section" aria-labelledby="titulo-crediario"><div class="view-content-box">
+                <h2 id="titulo-crediario">Crediário</h2><p class="field-help">Clientes que compraram para pagar depois. Ao receber, o valor abate primeiro as compras mais antigas e entra no caixa aberto.</p>
+                <div class="filtros"><label>Buscar cliente <input id="crediario-busca" type="search" placeholder="Nome do cliente" oninput="renderizarCrediario()"></label></div>
+                <div id="crediario-lista"></div>
+            </div></section>
 
             <!-- ABA: PRODUTOS (ADMIN) -->
-            <div id="view-cardapio" class="view-section"><div class="view-content-box">
- <div class="products-heading"><div><h2>Produtos</h2><p class="field-help">Cadastre e organize os produtos da loja. A categoria é usada nos relatórios.</p></div><button class="btn btn-primary" onclick="novoProduto()">+ Novo produto</button></div>
- <p id="produtos-conexao" role="status" class="field-help"></p><button id="produtos-reconectar" class="btn btn-secondary" hidden onclick="carregarProdutos()">Tentar conectar novamente</button>
- <div class="products-layout">
-  <section class="products-list-panel" aria-label="Produtos cadastrados"><input id="produto-busca" type="search" placeholder="Buscar nome, código ou código de barras" aria-label="Buscar produtos" oninput="renderizarProdutos()"><div class="table-scroll"><table class="table-items"><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Preço</th><th>Status</th><th></th></tr></thead><tbody id="produtos-lista"></tbody></table></div></section>
-  <form id="produto-form" class="product-form" onsubmit="event.preventDefault(); salvarProduto()">
-   <h3 id="produto-form-titulo">Novo produto</h3><input id="produto-id" type="hidden">
-   <label for="produto-nome">Nome do produto *</label><input id="produto-nome" maxlength="120" required placeholder="Ex.: Açaí por kg">
-   <div class="product-fields"><div><label for="produto-codigo">Código *</label><input id="produto-codigo" maxlength="40" required placeholder="Ex.: 103"></div><div><label for="produto-unidade">Forma de venda *</label><select id="produto-unidade" onchange="atualizarRotuloPreco()"><option value="UN">Unidade (UN)</option><option value="KG">Quilograma (KG)</option></select></div></div>
-   <label id="produto-preco-label" for="produto-preco">Preço por unidade (R$) *</label><input id="produto-preco" type="number" min="0" max="999999.99" step="0.01" required placeholder="0,00">
-   <label for="produto-categoria">Categoria <span class="optional">(recomendado)</span></label><input id="produto-categoria" maxlength="80" list="categorias-existentes" placeholder="Ex.: Açaí, Bebidas, Adicionais"><datalist id="categorias-existentes"></datalist>
-   <label for="produto-barras">Código de barras <span class="optional">(opcional)</span></label><input id="produto-barras" maxlength="80" placeholder="Digite ou leia o código">
-   <label class="checkbox-label"><input id="produto-cozinha" type="checkbox"> Enviar para a cozinha</label>
-   <label class="checkbox-label"><input id="produto-ativo" type="checkbox" checked> Disponível para venda</label>
-   <p id="produto-erro" class="form-error" role="alert"></p><div class="product-form-actions"><button id="produto-salvar" class="btn btn-primary" type="submit">Salvar produto</button><button class="btn btn-secondary" type="button" onclick="novoProduto()">Limpar</button></div>
-  </form>
- </div>
-</div></div>
+            <section id="view-cardapio" class="view-section" aria-labelledby="titulo-produtos"><div class="view-content-box">
+                <div class="products-heading"><div><h2 id="titulo-produtos">Produtos</h2><p class="field-help">Cadastre e organize os produtos da loja. A categoria é usada nos relatórios.</p></div><button class="btn btn-primary" type="button" onclick="novoProduto()">+ Novo produto</button></div>
+                <p id="produtos-conexao" role="status" class="field-help"></p><button id="produtos-reconectar" class="btn btn-secondary" type="button" hidden onclick="carregarProdutos()">Tentar conectar novamente</button>
+                <div class="products-layout">
+                    <section class="painel" aria-label="Produtos cadastrados"><input id="produto-busca" class="campo-largo" type="search" placeholder="Buscar nome, código ou categoria" aria-label="Buscar produtos" oninput="renderizarProdutos()"><div class="table-scroll"><table class="table-items"><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Preço</th><th>Status</th><th><span class="sr-only">Ações</span></th></tr></thead><tbody id="produtos-lista"></tbody></table></div></section>
+                    <form id="produto-form" class="painel product-form" onsubmit="event.preventDefault(); salvarProduto()">
+                        <h3 id="produto-form-titulo">Novo produto</h3><input id="produto-id" type="hidden">
+                        <label for="produto-nome">Nome do produto *</label><input id="produto-nome" maxlength="120" required placeholder="Ex.: Açaí por kg">
+                        <div class="product-fields"><div><label for="produto-codigo">Código *</label><input id="produto-codigo" maxlength="40" required placeholder="Ex.: 103"></div><div><label for="produto-unidade">Forma de venda *</label><select id="produto-unidade" onchange="atualizarRotuloPreco()"><option value="UN">Unidade (UN)</option><option value="KG">Quilograma (KG)</option></select></div></div>
+                        <label id="produto-preco-label" for="produto-preco">Preço por unidade (R$) *</label><input id="produto-preco" type="number" min="0" max="999999.99" step="0.01" required placeholder="0,00">
+                        <label for="produto-categoria">Categoria <span class="optional">(recomendado)</span></label><input id="produto-categoria" maxlength="80" list="categorias-existentes" placeholder="Ex.: Açaí, Bebidas, Adicionais"><datalist id="categorias-existentes"></datalist>
+                        <label for="produto-barras">Código de barras <span class="optional">(opcional)</span></label><input id="produto-barras" maxlength="80" placeholder="Digite ou leia o código">
+                        <label class="checkbox-label"><input id="produto-cozinha" type="checkbox"> Enviar para a cozinha</label>
+                        <label class="checkbox-label"><input id="produto-aceita-adicionais" type="checkbox"> Pede adicionais ao lançar <span class="optional">(ex.: açaí)</span></label>
+                        <label class="checkbox-label"><input id="produto-adicional" type="checkbox"> É um adicional <span class="optional">(ex.: Nutella, granola)</span></label>
+                        <label class="checkbox-label"><input id="produto-ativo" type="checkbox" checked> Disponível para venda</label>
+                        <p id="produto-erro" class="form-error" role="alert"></p><div class="product-form-actions"><button id="produto-salvar" class="btn btn-primary" type="submit">Salvar produto</button><button class="btn btn-secondary" type="button" onclick="novoProduto()">Limpar</button></div>
+                    </form>
+                </div>
+            </div></section>
 
             <!-- ABA: FECHAMENTO DE CAIXA -->
-            <div id="view-caixa" class="view-section"><div class="view-content-box"><h2>Fechamento de Caixa</h2><div id="caixa-resumo-box" style="margin-top:15px;"></div></div></div>
+            <section id="view-caixa" class="view-section" aria-labelledby="titulo-caixa"><div class="view-content-box"><h2 id="titulo-caixa">Fechamento de Caixa</h2><div id="caixa-resumo-box" class="bloco"></div></div></section>
 
             <!-- ABA: RELATÓRIOS (ADMIN) -->
-            <div id="view-relatorios" class="view-section"><div class="view-content-box">
-                <h2>Relatórios</h2><p class="field-help">Vendas canceladas não entram nos números.</p>
+            <section id="view-relatorios" class="view-section" aria-labelledby="titulo-relatorios"><div class="view-content-box">
+                <h2 id="titulo-relatorios">Relatórios</h2><p class="field-help">Vendas canceladas não entram nos números.</p>
                 <form class="filtros" onsubmit="event.preventDefault(); carregarRelatorio()">
                     <label>Período <select id="rel-periodo" onchange="aplicarPeriodoRelatorio()">
                         <option value="hoje">Hoje</option><option value="ontem">Ontem</option><option value="7dias">Últimos 7 dias</option>
@@ -120,34 +130,36 @@
                     <button class="btn btn-primary" type="submit">Atualizar</button>
                 </form>
                 <div id="rel-conteudo"></div>
-            </div></div>
+            </div></section>
 
             <!-- ABA: USUÁRIOS (ADMIN) -->
-            <div id="view-usuarios" class="view-section"><div class="view-content-box">
- <div class="products-heading"><div><h2>Usuários</h2><p class="field-help">Atendentes usam o caixa. Administradores também veem relatórios, produtos e usuários.</p></div><button class="btn btn-primary" onclick="novoUsuario()">+ Novo usuário</button></div>
- <div class="products-layout">
-  <section class="products-list-panel" aria-label="Usuários cadastrados"><div class="table-scroll"><table class="table-items"><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Status</th><th></th></tr></thead><tbody id="usuarios-lista"></tbody></table></div></section>
-  <form id="usuario-form" class="product-form" onsubmit="event.preventDefault(); salvarUsuario()">
-   <h3 id="usuario-form-titulo">Novo usuário</h3><input id="usuario-id" type="hidden">
-   <label for="usuario-nome-input">Nome *</label><input id="usuario-nome-input" maxlength="80" required>
-   <label for="usuario-login">Usuário (para entrar) *</label><input id="usuario-login" maxlength="40" required autocapitalize="none" placeholder="Ex.: maria">
-   <label for="usuario-senha">Senha</label><input id="usuario-senha" type="password" minlength="6" autocomplete="new-password"><p id="usuario-senha-ajuda" class="field-help" style="margin-top:6px;">Mínimo de 6 caracteres.</p>
-   <label for="usuario-perfil">Perfil *</label><select id="usuario-perfil"><option value="atendente">Atendente</option><option value="admin">Administrador</option></select>
-   <label class="checkbox-label"><input id="usuario-ativo" type="checkbox" checked> Pode entrar no sistema</label>
-   <p id="usuario-erro" class="form-error" role="alert"></p><div class="product-form-actions"><button class="btn btn-primary" type="submit">Salvar usuário</button><button class="btn btn-secondary" type="button" onclick="novoUsuario()">Limpar</button></div>
-  </form>
- </div>
-</div></div>
+            <section id="view-usuarios" class="view-section" aria-labelledby="titulo-usuarios"><div class="view-content-box">
+                <div class="products-heading"><div><h2 id="titulo-usuarios">Usuários</h2><p class="field-help">Atendentes usam o caixa. Administradores também veem relatórios, produtos, usuários e configurações.</p></div><button class="btn btn-primary" type="button" onclick="novoUsuario()">+ Novo usuário</button></div>
+                <div class="products-layout">
+                    <section class="painel" aria-label="Usuários cadastrados"><div class="table-scroll"><table class="table-items"><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Status</th><th><span class="sr-only">Ações</span></th></tr></thead><tbody id="usuarios-lista"></tbody></table></div></section>
+                    <form id="usuario-form" class="painel product-form" onsubmit="event.preventDefault(); salvarUsuario()">
+                        <h3 id="usuario-form-titulo">Novo usuário</h3><input id="usuario-id" type="hidden">
+                        <label for="usuario-nome-input">Nome *</label><input id="usuario-nome-input" maxlength="80" required>
+                        <label for="usuario-login">Usuário (para entrar) *</label><input id="usuario-login" maxlength="40" required autocapitalize="none" placeholder="Ex.: maria">
+                        <label for="usuario-senha">Senha</label><input id="usuario-senha" type="password" minlength="6" autocomplete="new-password" aria-describedby="usuario-senha-ajuda"><p id="usuario-senha-ajuda" class="field-help">Mínimo de 6 caracteres.</p>
+                        <label for="usuario-perfil">Perfil *</label><select id="usuario-perfil"><option value="atendente">Atendente</option><option value="admin">Administrador</option></select>
+                        <label class="checkbox-label"><input id="usuario-ativo" type="checkbox" checked> Pode entrar no sistema</label>
+                        <p id="usuario-erro" class="form-error" role="alert"></p><div class="product-form-actions"><button class="btn btn-primary" type="submit">Salvar usuário</button><button class="btn btn-secondary" type="button" onclick="novoUsuario()">Limpar</button></div>
+                    </form>
+                </div>
+            </div></section>
 
-            <!-- ABA: IMPRESSORAS (ADMIN) -->
-            <div id="view-impressoras" class="view-section"><div class="view-content-box">
-                <h2>Impressoras</h2><p class="field-help">A <strong>cozinha</strong> recebe os pedidos das comandas. O <strong>caixa</strong> imprime o comprovante da venda (não é documento fiscal).</p>
+            <!-- ABA: CONFIGURAÇÕES (ADMIN): IMPRESSORAS E BACKUP -->
+            <section id="view-impressoras" class="view-section" aria-labelledby="titulo-config"><div class="view-content-box">
+                <h2 id="titulo-config">Configurações</h2>
+                <h3 class="subtitulo">Impressoras</h3>
+                <p class="field-help">A <strong>cozinha</strong> recebe os pedidos das comandas. O <strong>caixa</strong> imprime o comprovante da venda (não é documento fiscal).</p>
                 <form id="impressoras-form" onsubmit="event.preventDefault(); salvarImpressoras()">
                     <div class="impressoras-grid">
-                        <section class="painel" id="impressora-cozinha"><h3>Cozinha</h3></section>
-                        <section class="painel" id="impressora-caixa"><h3>Caixa</h3></section>
-                        <section class="painel">
-                            <h3>Comprovante</h3>
+                        <section class="painel" id="impressora-cozinha" aria-label="Impressora da cozinha"></section>
+                        <section class="painel" id="impressora-caixa" aria-label="Impressora do caixa"></section>
+                        <section class="painel" aria-label="Comprovante">
+                            <h4>Comprovante</h4>
                             <label for="imp-comprovante">Depois de cada pagamento</label>
                             <select id="imp-comprovante"><option value="perguntar">Perguntar se quer imprimir</option><option value="sempre">Imprimir sempre</option><option value="nunca">Não imprimir</option></select>
                             <label for="imp-cabecalho">Cabeçalho</label><textarea id="imp-cabecalho" rows="3" maxlength="300" placeholder="Nome da loja, endereço, telefone"></textarea>
@@ -155,30 +167,34 @@
                         </section>
                     </div>
                     <p id="impressoras-erro" class="form-error" role="alert"></p>
-                    <button class="btn btn-primary" type="submit">Salvar configuração</button>
+                    <button class="btn btn-primary" type="submit">Salvar impressoras</button>
                 </form>
-                <details class="ajuda-impressora">
+                <details class="ajuda">
                     <summary>Como ligar a impressora térmica</summary>
                     <p><strong>Janela do navegador:</strong> funciona com qualquer impressora instalada no Windows. A cada impressão abre a janela de impressão; escolha a impressora térmica e marque para lembrar.</p>
-                    <p><strong>Impressora de rede:</strong> se a impressora tem cabo de rede ou Wi-Fi, informe o IP dela (aparece na folha de autoteste, segurando o botão FEED ao ligar). A porta padrão é 9100.</p>
-                    <p><strong>USB compartilhada no Windows:</strong> instale o driver da impressora, abra <em>Configurações → Bluetooth e dispositivos → Impressoras</em>, entre na impressora, <em>Propriedades da impressora → Compartilhamento</em>, marque "Compartilhar esta impressora" e dê um nome curto, por exemplo <code>COZINHA</code>. Use esse nome aqui.</p>
+                    <p><strong>Impressora de rede (Wi-Fi ou cabo):</strong> use "Procurar na rede" ou informe o IP dela (aparece na folha de autoteste, segurando o botão FEED ao ligar). Reserve esse IP no roteador para ele não mudar depois de uma queda de energia.</p>
+                    <p><strong>USB compartilhada no Windows:</strong> instale o driver, abra <em>Configurações → Bluetooth e dispositivos → Impressoras</em>, entre na impressora, <em>Propriedades da impressora → Compartilhamento</em>, marque "Compartilhar esta impressora" e dê um nome curto, por exemplo <code>COZINHA</code>.</p>
                     <p><strong>Acentos:</strong> se aparecerem símbolos estranhos no lugar de "ç" ou "ã", use "Sem acentos".</p>
                 </details>
-            </div></div>
-        </div>
+
+                <h3 class="subtitulo">Backup</h3>
+                <p class="field-help">Todo dia o sistema guarda uma cópia completa dos dados (as últimas 30 ficam guardadas). Para não perder nada se o computador estragar, escolha também uma pasta fora dele: um pen drive ou a pasta do Google Drive.</p>
+                <div id="backup-box" class="bloco"></div>
+            </div></section>
+        </main>
     </div>
 
     <!-- MODAL: ABERTURA DE CAIXA -->
-    <div class="modal-overlay" id="modal-abertura-caixa">
+    <div class="modal-overlay" id="modal-abertura-caixa" role="dialog" aria-modal="true" aria-labelledby="titulo-abertura">
         <div class="modal-container modal-sm">
             <div class="modal-header">
-                <h2>Abertura de Caixa</h2>
-                <button class="close-btn" aria-label="Fechar abertura de caixa" onclick="fecharAberturaCaixa()">&times;</button>
+                <h2 id="titulo-abertura">Abertura de caixa</h2>
+                <button class="close-btn" type="button" aria-label="Fechar abertura de caixa" onclick="fecharAberturaCaixa()">&times;</button>
             </div>
             <form class="modal-body" onsubmit="event.preventDefault(); confirmarAberturaCaixa()">
-                <p style="margin-bottom: 10px;">Informe o valor do fundo de caixa (troco inicial):</p>
-                <input type="number" step="0.01" min="0" id="input-fundo-caixa" placeholder="R$ 0,00" style="width:100%; padding:10px; font-size:16px;">
-                <button class="btn btn-primary" type="submit" style="width:100%; margin-top:15px;">Abrir Caixa</button>
+                <label for="input-fundo-caixa">Fundo de caixa (troco inicial, em R$)</label>
+                <input type="number" step="0.01" min="0" id="input-fundo-caixa" placeholder="0,00" class="campo-grande">
+                <button class="btn btn-primary full-width" type="submit">Abrir caixa</button>
             </form>
         </div>
     </div>
@@ -188,87 +204,132 @@
         <div class="modal-container">
             <div class="modal-header">
                 <h2 id="modal-titulo">Comanda #00</h2>
-                <button class="close-btn" onclick="fecharModal()">&times;</button>
+                <button class="close-btn" type="button" aria-label="Fechar comanda" onclick="fecharModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="quick-products" id="quick-products-bar"></div>
+                <div class="quick-products" id="quick-products-bar" aria-label="Produtos mais usados"></div>
 
                 <div class="add-item-box">
-                    <input type="text" id="input-item-modal" placeholder="Buscar por código ou nome do produto" autocomplete="off" aria-label="Buscar produto na comanda" aria-controls="busca-produtos-resultados" oninput="pesquisarProdutosComanda()">
-                    <button class="btn btn-primary" onclick="adicionarItemPorPesquisa()">+ Adicionar</button>
+                    <input type="text" id="input-item-modal" placeholder="Buscar produto pelo nome ou código" autocomplete="off" aria-label="Buscar produto na comanda" role="combobox" aria-expanded="false" aria-controls="busca-produtos-resultados" aria-autocomplete="list" oninput="pesquisarProdutosComanda()">
+                    <button class="btn btn-primary" type="button" onclick="adicionarItemPorPesquisa()">+ Adicionar</button>
                 </div>
 
-                <div id="busca-produtos-resultados" class="search-results" hidden aria-label="Produtos encontrados"></div>
+                <div id="busca-produtos-resultados" class="search-results" role="listbox" hidden aria-label="Produtos encontrados"></div>
                 <p id="busca-produtos-status" class="field-help" role="status" hidden></p>
-                <table class="table-items">
-                    <thead>
-                        <tr>
-                            <th>Item / Obs</th>
-                            <th style="width: 90px;">Qtd</th>
-                            <th>Unit.</th>
-                            <th>Total</th>
-                            <th style="width: 90px; text-align:center;">Cozinha</th>
-                            <th style="width: 40px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="modal-tabela-itens"></tbody>
-                </table>
+                <div class="table-scroll">
+                    <table class="table-items tabela-comanda">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Qtd</th>
+                                <th class="num">Unit.</th>
+                                <th class="num">Total</th>
+                                <th>Cozinha</th>
+                                <th><span class="sr-only">Remover</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="modal-tabela-itens"></tbody>
+                    </table>
+                </div>
 
                 <div class="financial-summary">
-                    <div class="summary-row"><span>Subtotal:</span><span id="summary-subtotal">R$ 0,00</span></div>
-                    <div class="summary-row"><span>Desconto:</span><span id="summary-desconto">R$ 0,00</span></div>
-                    <div class="summary-row"><span>Adiantamento:</span><span id="summary-adiantamento">R$ 0,00</span></div>
-                    <div class="summary-row total"><span>Total a Pagar:</span><span id="summary-total">R$ 0,00</span></div>
+                    <div class="summary-row"><span>Subtotal</span><span id="summary-subtotal">R$ 0,00</span></div>
+                    <div class="summary-row"><span>Desconto</span><span id="summary-desconto">R$ 0,00</span></div>
+                    <div class="summary-row"><span>Adiantamento</span><span id="summary-adiantamento">R$ 0,00</span></div>
+                    <div class="summary-row total"><span>Total a pagar</span><span id="summary-total">R$ 0,00</span></div>
                 </div>
 
                 <div class="modal-actions">
-                    <button class="btn btn-pay" onclick="receberComandaAtual()">Efetuar pagamento</button>
-                    <button class="btn btn-print" onclick="imprimirCozinha()">Enviar para a cozinha</button>
-                    <button class="btn btn-action" onclick="abrirTransferencia()">Transferir itens</button>
-                    <button class="btn btn-action" onclick="adiantarValor()">Adiantar</button>
-                    <button class="btn btn-secondary" onclick="fecharModal()">Sair</button>
+                    <button class="btn btn-pay" type="button" onclick="receberComandaAtual()">Efetuar pagamento</button>
+                    <button class="btn btn-secondary" type="button" onclick="imprimirCozinha()">Enviar para a cozinha</button>
+                    <button class="btn btn-secondary" type="button" onclick="abrirTransferencia()">Transferir itens</button>
+                    <button class="btn btn-secondary" type="button" onclick="adiantarValor()">Adiantar</button>
+                    <button class="btn btn-secondary" type="button" onclick="fecharModal()">Sair</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="modal-overlay" id="modal-pagamento" role="dialog" aria-modal="true" aria-labelledby="titulo-pagamento">
+    <!-- MODAL: ADICIONAIS -->
+    <div class="modal-overlay" id="modal-adicionais" role="dialog" aria-modal="true" aria-labelledby="titulo-adicionais">
         <div class="modal-container modal-sm">
-            <div class="modal-header"><h2 id="titulo-pagamento">Pagamento</h2><button class="close-btn" aria-label="Fechar pagamento" onclick="fecharJanela('modal-pagamento')">&times;</button></div>
+            <div class="modal-header"><h2 id="titulo-adicionais">Adicionais</h2><button class="close-btn" type="button" aria-label="Fechar adicionais" onclick="fecharAdicionais()">&times;</button></div>
+            <form class="modal-body" onsubmit="event.preventDefault(); fecharAdicionais()">
+                <p id="adicionais-item" class="field-help"></p>
+                <div id="adicionais-lista" class="adicionais-lista"></div>
+                <div class="summary-row total"><span>Adicionais (cada unidade)</span><strong id="adicionais-total">R$ 0,00</strong></div>
+                <button class="btn btn-primary full-width" type="submit">Pronto</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: PAGAMENTO -->
+    <div class="modal-overlay" id="modal-pagamento" role="dialog" aria-modal="true" aria-labelledby="titulo-pagamento">
+        <div class="modal-container modal-md">
+            <div class="modal-header"><h2 id="titulo-pagamento">Pagamento</h2><button class="close-btn" type="button" aria-label="Fechar pagamento" onclick="fecharJanela('modal-pagamento')">&times;</button></div>
             <form class="modal-body" onsubmit="event.preventDefault(); confirmarPagamento()">
                 <div class="summary-row"><span>Subtotal</span><strong id="pag-subtotal"></strong></div>
                 <div class="summary-row"><span>Adiantamento</span><span id="pag-adiantamento"></span></div>
                 <label for="pag-desconto">Desconto <span class="optional">(opcional)</span></label>
                 <div class="field-row"><select id="pag-tipo-desconto" aria-label="Tipo de desconto" onchange="atualizarPagamento()"><option value="valor">R$</option><option value="percentual">%</option></select><input id="pag-desconto" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></div>
-                <p class="payment-label">Formas de pagamento</p><p class="field-help">Preencha os valores nas formas utilizadas. Você pode combinar várias.</p><div class="payment-grid"><label class="payment-card" for="pag-valor-0"><span>Dinheiro</span><div class="payment-value"><span>R$</span><input id="pag-valor-0" data-metodo="Dinheiro" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Dinheiro" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-1"><span>Pix</span><div class="payment-value"><span>R$</span><input id="pag-valor-1" data-metodo="Pix" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Pix" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-2"><span>Débito</span><div class="payment-value"><span>R$</span><input id="pag-valor-2" data-metodo="Débito" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Débito" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-3"><span>Crédito</span><div class="payment-value"><span>R$</span><input id="pag-valor-3" data-metodo="Crédito" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Crédito" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-4"><span>Crediário</span><div class="payment-value"><span>R$</span><input id="pag-valor-4" data-metodo="Crediário" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Crediário" oninput="atualizarPagamento()"></div></label><label class="payment-card" for="pag-valor-5"><span>Voucher</span><div class="payment-value"><span>R$</span><input id="pag-valor-5" data-metodo="Voucher" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Valor em Voucher" oninput="atualizarPagamento()"></div></label></div><div id="pag-cliente-box" hidden><label for="pag-cliente">Cliente do crediário</label><input id="pag-cliente" type="text" maxlength="120" placeholder="Nome do cliente"></div><div class="payment-progress"><div class="summary-row"><span>Valor informado</span><strong id="pag-informado"></strong></div><div class="summary-row"><span>Falta pagar</span><strong id="pag-restante"></strong></div><div class="summary-row"><span>Troco em dinheiro</span><strong id="pag-troco"></strong></div></div><div class="summary-row total payment-total"><span>Total a pagar</span><strong id="pag-total"></strong></div>
+                <p class="payment-label">Formas de pagamento</p><p class="field-help">Preencha os valores nas formas utilizadas. Você pode combinar várias.</p>
+                <div class="payment-grid">
+                    <label class="payment-card" for="pag-valor-0"><span>Dinheiro</span><span class="payment-value"><span aria-hidden="true">R$</span><input id="pag-valor-0" data-metodo="Dinheiro" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></span></label>
+                    <label class="payment-card" for="pag-valor-1"><span>Pix</span><span class="payment-value"><span aria-hidden="true">R$</span><input id="pag-valor-1" data-metodo="Pix" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></span></label>
+                    <label class="payment-card" for="pag-valor-2"><span>Débito</span><span class="payment-value"><span aria-hidden="true">R$</span><input id="pag-valor-2" data-metodo="Débito" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></span></label>
+                    <label class="payment-card" for="pag-valor-3"><span>Crédito</span><span class="payment-value"><span aria-hidden="true">R$</span><input id="pag-valor-3" data-metodo="Crédito" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></span></label>
+                    <label class="payment-card" for="pag-valor-4"><span>Crediário</span><span class="payment-value"><span aria-hidden="true">R$</span><input id="pag-valor-4" data-metodo="Crediário" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></span></label>
+                    <label class="payment-card" for="pag-valor-5"><span>Voucher</span><span class="payment-value"><span aria-hidden="true">R$</span><input id="pag-valor-5" data-metodo="Voucher" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></span></label>
+                </div>
+                <div id="pag-cliente-box" hidden><label for="pag-cliente">Cliente do crediário</label><input id="pag-cliente" type="text" maxlength="120" placeholder="Nome do cliente" list="clientes-crediario"><datalist id="clientes-crediario"></datalist></div>
+                <div class="payment-progress"><div class="summary-row"><span>Valor informado</span><strong id="pag-informado"></strong></div><div class="summary-row"><span>Falta pagar</span><strong id="pag-restante"></strong></div><div class="summary-row"><span>Troco em dinheiro</span><strong id="pag-troco"></strong></div></div>
+                <div class="summary-row total payment-total"><span>Total a pagar</span><strong id="pag-total"></strong></div>
                 <p id="pag-erro" class="form-error" role="alert"></p>
                 <button class="btn btn-pay full-width" type="submit">Confirmar pagamento</button>
             </form>
         </div>
     </div>
+
+    <!-- MODAL: TRANSFERÊNCIA -->
     <div class="modal-overlay" id="modal-transferencia" role="dialog" aria-modal="true" aria-labelledby="titulo-transferencia">
         <div class="modal-container modal-sm">
-            <div class="modal-header"><h2 id="titulo-transferencia">Transferir itens</h2><button class="close-btn" aria-label="Fechar transferência" onclick="fecharJanela('modal-transferencia')">&times;</button></div>
+            <div class="modal-header"><h2 id="titulo-transferencia">Transferir itens</h2><button class="close-btn" type="button" aria-label="Fechar transferência" onclick="fecharJanela('modal-transferencia')">&times;</button></div>
             <form class="modal-body" onsubmit="event.preventDefault(); confirmarTransferencia()">
                 <p>Selecione a quantidade de cada item que deseja mover.</p>
                 <div id="transferencia-itens"></div>
-                <label for="transferencia-destino">Cartão / comanda de destino</label><select id="transferencia-destino" required></select>
-                <p class="field-help">Observações e status da cozinha acompanham os itens. Descontos e adiantamentos permanecem na origem.</p>
+                <label for="transferencia-destino">Comanda de destino</label><select id="transferencia-destino" required></select>
+                <p class="field-help">Observações, adicionais e status da cozinha acompanham os itens. Descontos e adiantamentos permanecem na origem.</p>
                 <p id="transferencia-erro" class="form-error" role="alert"></p>
                 <button class="btn btn-primary full-width" type="submit">Confirmar transferência</button>
             </form>
         </div>
     </div>
+
+    <!-- MODAL: FILA DE IMPRESSÃO -->
     <div class="modal-overlay" id="modal-fila" role="dialog" aria-modal="true" aria-labelledby="titulo-fila">
         <div class="modal-container modal-sm">
-            <div class="modal-header"><h2 id="titulo-fila">Pedidos aguardando impressora</h2><button class="close-btn" aria-label="Fechar" onclick="fecharFila()">&times;</button></div>
+            <div class="modal-header"><h2 id="titulo-fila">Pedidos aguardando impressora</h2><button class="close-btn" type="button" aria-label="Fechar" onclick="fecharFila()">&times;</button></div>
             <div class="modal-body">
-                <p class="field-help" style="margin:0 0 12px;">A impressora da cozinha não respondeu. Os pedidos saem sozinhos, na ordem, assim que ela voltar. Confira se está ligada, com papel e no Wi-Fi.</p>
+                <p class="field-help">A impressora da cozinha não respondeu. Os pedidos saem sozinhos, na ordem, assim que ela voltar. Confira se está ligada, com papel e no Wi-Fi.</p>
                 <div id="fila-lista"></div>
             </div>
         </div>
     </div>
-    <div id="toast" role="status" class="toast" hidden></div>
+
+    <!-- MODAL: PERGUNTAS E CONFIRMAÇÕES (substitui as janelas do navegador) -->
+    <div class="modal-overlay" id="modal-dialogo" role="dialog" aria-modal="true" aria-labelledby="dialogo-titulo" aria-describedby="dialogo-mensagem">
+        <div class="modal-container modal-sm">
+            <div class="modal-header"><h2 id="dialogo-titulo"></h2><button class="close-btn" type="button" aria-label="Fechar" onclick="responderDialogo(false)">&times;</button></div>
+            <form class="modal-body" onsubmit="event.preventDefault(); responderDialogo(true)" novalidate>
+                <p id="dialogo-mensagem" class="dialogo-mensagem"></p>
+                <div id="dialogo-campos"></div>
+                <p id="dialogo-erro" class="form-error" role="alert"></p>
+                <div class="dialogo-acoes"><button type="button" class="btn btn-secondary" id="dialogo-cancelar" onclick="responderDialogo(false)">Cancelar</button><button type="submit" class="btn btn-primary" id="dialogo-ok">Confirmar</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
     <iframe id="frame-impressao" title="Impressão" aria-hidden="true" tabindex="-1"></iframe>
     <script src="script.js"></script>
 </body>
