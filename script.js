@@ -421,7 +421,7 @@ function abrirModalComanda(numero) {
             if (item.requerCozinha) {
                 statusCozinhaHtml = item.impresso
                     ? '<span class="status-badge badge-printed">Enviado</span>'
-                    : '<span class="status-badge badge-pending">A enviar</span>';
+                    : `<span class="status-badge badge-pending">A enviar${item.qtdImpressa ? ` +${quantidadeTexto({...item, qtd: qtdPendenteCozinha(item)}).replace(/x$/, '')}` : ''}</span>`;
             }
             const nome = escaparHtml(item.nome);
             const adicionais = item.adicionais || [];
@@ -489,7 +489,7 @@ let itemAdicionais = null;
 function abrirAdicionais(index) {
     const item = comandas[comandaSelecionada]?.itens[index];
     if (!item) return;
-    if (item.impresso) return avisar('Este item já foi para a cozinha. Para mudar os adicionais, remova e lance de novo.');
+    if (qtdImpressa(item)) return avisar('Este item já foi para a cozinha. Para mudar os adicionais, remova e lance de novo.');
     itemAdicionais = index;
     document.getElementById('adicionais-item').textContent = `${item.nome}${item.unidade === 'UN' && item.qtd > 1 ? ` (${item.qtd} unidades: os adicionais valem para cada uma)` : ''}`;
     renderizarAdicionais();
@@ -698,10 +698,12 @@ async function imprimirCozinha() {
     if (pendentes.length === 0) return avisar('Não há itens pendentes para enviar à cozinha.');
     const vibra = comandas[numero].vibra || numero;
     let resultado;
-    try { resultado = await imprimir('cozinha', documentoCozinha(numero, pendentes, vibra), {descricao: `Pedido da comanda ${String(numero).padStart(2, '0')} (vibra ${String(vibra).padStart(2, '0')})`}); }
+    // Item aumentado depois de enviado: a cozinha recebe só as unidades novas.
+    const enviar = pendentes.map(i => ({...i, qtd: qtdPendenteCozinha(i)}));
+    try { resultado = await imprimir('cozinha', documentoCozinha(numero, enviar, vibra), {descricao: `Pedido da comanda ${String(numero).padStart(2, '0')} (vibra ${String(vibra).padStart(2, '0')})`}); }
     catch (e) { return avisar(e.message); }
     // Só marca como impresso depois que a impressão foi aceita (ou guardada na fila, que imprime sozinha).
-    pendentes.forEach(i => i.impresso = true);
+    pendentes.forEach(i => marcarImpresso(i, i.qtd));
     renderizarTudo();
     if (comandaSelecionada === numero) abrirModalComanda(numero);
     avisar(resultado?.naFila ? resultado.mensagem : 'Pedido enviado para a cozinha.');
@@ -935,8 +937,15 @@ function confirmarTransferencia() {
     if (!erro && saldoRestante < centavos(origem.desconto || 0) + centavos(origem.adiantamento || 0)) erro = 'Mantenha itens suficientes na origem para cobrir o desconto e o adiantamento.';
     if (erro) { document.getElementById('transferencia-erro').textContent = erro; return; }
     origem.itens.forEach((item, i) => {
-        if (quantidades[i]) destino.itens.push({...item, uid: novoUid(), adicionais: (item.adicionais || []).map(a => ({...a})), qtd: quantidades[i]});
+        // A parte que já foi para a cozinha vai primeiro com a transferência; o resto continua a enviar.
+        const jaFoi = qtdImpressa(item), foiJunto = Math.min(jaFoi, quantidades[i]);
+        if (quantidades[i]) {
+            const copia = {...item, uid: novoUid(), adicionais: (item.adicionais || []).map(a => ({...a})), qtd: quantidades[i]};
+            marcarImpresso(copia, foiJunto);
+            destino.itens.push(copia);
+        }
         item.qtd = Math.round((item.qtd - quantidades[i]) * 1000) / 1000;
+        marcarImpresso(item, Math.round((jaFoi - foiJunto) * 1000) / 1000);
     });
     origem.itens = origem.itens.filter(item => item.qtd > 0);
     origem.aberta = origem.itens.length > 0;
@@ -1333,7 +1342,19 @@ function definirQuantidadeItem(index, valor) {
         abrirModalComanda(comandaSelecionada); return;
     }
     if (qtd < item.qtd && !podeReduzirSaldo((totalItemCentavos(item) - totalItemCentavos({...item, qtd})) / 100)) { abrirModalComanda(comandaSelecionada); return; }
-    item.qtd = qtd; renderizarTudo(); abrirModalComanda(comandaSelecionada);
+    const jaFoi = qtdImpressa(item);
+    item.qtd = qtd;
+    marcarImpresso(item, jaFoi);
+    renderizarTudo(); abrirModalComanda(comandaSelecionada);
+}
+
+// Quanto do item já foi para a cozinha: tudo, se está como enviado, ou a parte enviada antes de aumentarem a quantidade.
+function qtdImpressa(item) { return item.impresso ? item.qtd : (item.qtdImpressa || 0); }
+function qtdPendenteCozinha(item) { return Math.round((item.qtd - qtdImpressa(item)) * 1000) / 1000; }
+function marcarImpresso(item, jaFoi) {
+    delete item.qtdImpressa;
+    item.impresso = jaFoi >= item.qtd;
+    if (jaFoi > 0 && !item.impresso) item.qtdImpressa = jaFoi;
 }
 
 // ---------- IMPRESSÃO ----------

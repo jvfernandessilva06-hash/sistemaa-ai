@@ -247,7 +247,11 @@ function validarComanda(c) {
    if (!nomeAdicional || typeof a.preco !== 'number' || !Number.isFinite(a.preco) || a.preco < 0 || a.preco > 9999.99 || !Number.isInteger(a.qtd) || a.qtd < 1 || a.qtd > 20) falha(400,`Adicional inválido em ${nome}.`);
    return {id:Number.isInteger(a.id) ? a.id : null, codigo:texto(a.codigo, 40), nome:nomeAdicional, categoria:texto(a.categoria, 80), preco:a.preco, qtd:a.qtd};
   });
-  return {uid:typeof i.uid === 'string' && /^[a-z0-9]{6,24}$/.test(i.uid) ? i.uid : null, id:Number.isInteger(i.id) ? i.id : null, codigo:texto(i.codigo, 40), nome, preco:i.preco, unidade, categoria:texto(i.categoria, 80), codigoBarras:texto(i.codigoBarras, 80), requerCozinha:i.requerCozinha === true, aceitaAdicionais:i.aceitaAdicionais === true, ativo:true, qtd:i.qtd, obs:texto(i.obs, 200), impresso:i.impresso === true, adicionais};
+  // Quantidade já enviada à cozinha quando aumentaram o item depois de imprimir; a cozinha recebe só a diferença.
+  const qtdImpressa = i.impresso === true || i.qtdImpressa === undefined || i.qtdImpressa === null ? null : i.qtdImpressa;
+  if (qtdImpressa !== null && (!quantidadeValida(qtdImpressa, unidade))) falha(400,`Quantidade enviada à cozinha inválida em ${nome}.`);
+  const impresso = i.impresso === true || (qtdImpressa !== null && qtdImpressa >= i.qtd);
+  return {uid:typeof i.uid === 'string' && /^[a-z0-9]{6,24}$/.test(i.uid) ? i.uid : null, id:Number.isInteger(i.id) ? i.id : null, codigo:texto(i.codigo, 40), nome, preco:i.preco, unidade, categoria:texto(i.categoria, 80), codigoBarras:texto(i.codigoBarras, 80), requerCozinha:i.requerCozinha === true, aceitaAdicionais:i.aceitaAdicionais === true, ativo:true, qtd:i.qtd, obs:texto(i.obs, 200), impresso, ...(qtdImpressa !== null && !impresso ? {qtdImpressa} : {}), adicionais};
  });
  const adiantamento = Number(c.adiantamento || 0), desconto = Number(c.desconto || 0);
  if (![adiantamento, desconto].every(v => Number.isFinite(v) && v >= 0)) falha(400,'Valores da comanda inválidos.');
@@ -284,7 +288,7 @@ function registrarRetiradas(usuario, numero, antiga, nova, transferencia) {
   const transferiu = transferencia?.origem === numero;
   const quantidade = item.unidade === 'KG' ? `${retirado.toLocaleString('pt-BR', {minimumFractionDigits:3})} kg` : `${retirado}x`;
   db.prepare('INSERT INTO registro_comandas (usuario_id,comanda,acao,descricao,enviado_cozinha) VALUES (?,?,?,?,?)')
-   .run(usuario.id, numero, transferiu ? 'transferiu' : 'removeu', `${quantidade} ${item.nome}${transferiu ? ` para a comanda ${transferencia.destino}` : ''}`, Number(item.impresso === true));
+   .run(usuario.id, numero, transferiu ? 'transferiu' : 'removeu', `${quantidade} ${item.nome}${transferiu ? ` para a comanda ${transferencia.destino}` : ''}`, Number(item.impresso === true || item.qtdImpressa > 0));
  }
 }
 function listarRegistro(ctx) {

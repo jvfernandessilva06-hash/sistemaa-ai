@@ -73,6 +73,13 @@ function cliente() {
  assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:true,itens,adiantamento:0,desconto:0,vibra:17}}})).status, 200);
  assert.equal((await admin('/api/comandas')).body[3].vibra, 17, 'guarda o número da comanda que vibra');
  assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:false,itens:[],adiantamento:0,desconto:0}}})).status, 200);
+ // Aumentou a quantidade depois de enviar: guarda quanto já foi para a cozinha imprimir só a diferença.
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:true,itens:[{...acai500,qtd:3,impresso:false,qtdImpressa:2}],adiantamento:0,desconto:0}}})).status, 200);
+ assert.equal((await admin('/api/comandas')).body[3].itens[0].qtdImpressa, 2, 'guarda quanto já foi para a cozinha');
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:true,itens:[{...acai500,qtd:3,impresso:false,qtdImpressa:-1}],adiantamento:0,desconto:0}}})).status, 400);
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:true,itens:[{...acai500,qtd:2,impresso:false,qtdImpressa:5}],adiantamento:0,desconto:0}}})).status, 200);
+ assert.equal((await admin('/api/comandas')).body[3].itens[0].impresso, true, 'se já foi tudo, fica como enviado');
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:false,itens:[],adiantamento:0,desconto:0}}})).status, 200);
  assert.equal((await atendente('/api/vendas','POST',{comanda:1,desconto:0,pagamentos:[{metodo:'Pix',valor:5347}]})).status, 409, 'sem caixa aberto');
  assert.equal((await atendente('/api/caixa/abrir','POST',{fundo:100})).status, 201);
  assert.equal((await admin('/api/caixa/abrir','POST',{fundo:50})).status, 409);
