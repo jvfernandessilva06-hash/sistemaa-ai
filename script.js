@@ -974,11 +974,10 @@ function htmlImpressao(documento, cfg) {
 function agoraTexto() { return new Date().toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}); }
 function quantidadeTexto(item) { return item.unidade === 'KG' ? `${Number(item.qtd).toLocaleString('pt-BR', {minimumFractionDigits: 3})} kg` : `${item.qtd}x`; }
 
+// A cozinha só precisa saber o que preparar e qual comanda chamar: sem loja, preços ou atendente.
 function documentoCozinha(numero, itens) {
     return [
-        {t: 'texto', v: 'PEDIDO COZINHA', b: true, a: 'c'},
         {t: 'texto', v: `COMANDA ${String(numero).padStart(2, '0')}`, b: true, g: true, a: 'c'},
-        {t: 'texto', v: `${agoraTexto()} - ${usuario?.nome || ''}`, a: 'c'},
         {t: 'linha'},
         ...itens.flatMap(i => [
             {t: 'texto', v: `${quantidadeTexto(i)} ${i.nome}`, b: true, g: true},
