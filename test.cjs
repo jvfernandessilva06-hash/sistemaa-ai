@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {once} = require('node:events');
+const net = require('node:net');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(),'acai-teste-'));
 const database = path.join(temporary,'produtos.db');
 const port = 3137;
@@ -103,7 +104,27 @@ function cliente() {
  const depois = (await admin('/api/relatorios')).body.resumo;
  assert.equal(depois.vendas, 0); assert.equal(depois.canceladas, 1);
 
- // Desativar usuário derruba a sessão dele.
+ // Impressão: uma impressora de rede falsa recebe os comandos ESC/POS.
+ const recebido = [];
+ const impressora = net.createServer(s => { const partes = []; s.on('data', d => partes.push(d)); s.on('end', () => recebido.push(Buffer.concat(partes))); });
+ await new Promise(r => impressora.listen(9199, '127.0.0.1', r));
+ const config = (await atendente('/api/impressoras')).body;
+ assert.equal(config.cozinha.modo, 'navegador');
+ const documento = [{t:'texto',v:'COMANDA 07',g:true,b:true,a:'c'},{t:'linha'},{t:'texto',v:'2x Açaí 500ml'},{t:'par',e:'Total',d:'R$ 36,00'}];
+ assert.equal((await atendente('/api/imprimir','POST',{destino:'cozinha',documento})).status, 409, 'modo navegador imprime pela tela');
+ assert.equal((await atendente('/api/impressoras','PUT',{...config})).status, 403);
+ assert.equal((await admin('/api/impressoras','PUT',{...config,cozinha:{...config.cozinha,modo:'rede',endereco:'1.2.3.4; rm -rf'}})).status, 400);
+ assert.equal((await admin('/api/impressoras','PUT',{...config,cozinha:{...config.cozinha,modo:'rede',endereco:'127.0.0.1:9199',acentos:'cp850',copias:2}})).status, 200);
+ assert.equal((await atendente('/api/imprimir','POST',{destino:'cozinha',documento})).status, 200);
+ await new Promise(r => setTimeout(r, 200));
+ const bytes = recebido[0];
+ assert.ok(bytes.includes(Buffer.from('COMANDA 07')), 'texto chegou na impressora');
+ assert.ok(bytes.includes(Buffer.from([0x41, 0x87, 0x61, 0xa1])), 'Açaí em CP850');
+ assert.equal(bytes.filter((b, i) => b === 0x1d && bytes[i + 1] === 0x56).length, 2, 'duas cópias, cada uma com corte');
+ assert.ok(bytes.includes(Buffer.from('Total' + ' '.repeat(48 - 5 - 8) + 'R$ 36,00')), 'par alinhado em 48 colunas');
+ impressora.close();
+ assert.equal((await atendente('/api/imprimir','POST',{destino:'cozinha',documento})).status, 502, 'impressora desligada');
+
  assert.equal((await admin(`/api/usuarios/${ana.body.id}`,'PUT',{nome:'Ana',perfil:'atendente',ativo:false})).status, 200);
  assert.equal((await atendente('/api/produtos')).status, 401);
  assert.equal((await admin('/api/logout','POST',{})).status, 200);

@@ -28,6 +28,16 @@ Na aba **Relatórios** o administrador escolhe o período e vê: número de vend
 
 As categorias vêm do cadastro de produtos: preencha a categoria de cada produto para o relatório de categorias funcionar.
 
+## Impressão
+
+Na aba **Impressoras** (administrador) configure a impressora da **cozinha** (pedidos) e a do **caixa** (comprovante, que não é documento fiscal). Cada uma pode imprimir de três formas:
+
+- **Janela do navegador:** funciona com qualquer impressora instalada no Windows.
+- **Impressora de rede:** informe o IP; o sistema envia comandos ESC/POS direto pela porta 9100.
+- **USB compartilhada no Windows:** compartilhe a impressora no Windows e informe o nome do compartilhamento.
+
+Na comanda, **Enviar para a cozinha** imprime só os itens marcados para a cozinha que ainda não foram enviados. O comprovante pode ser impresso depois do pagamento (sempre, perguntando ou nunca) e reimpresso pelo Histórico.
+
 ## Regras
 
 - Produtos inativos permanecem cadastrados, mas saem da busca e dos atalhos de venda. Alterar o cadastro não muda itens já lançados nas comandas.

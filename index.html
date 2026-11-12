@@ -139,7 +139,32 @@
  </div>
 </div></div>
 
-            <div id="view-impressoras" class="view-section"><div class="view-content-box"><h2>Impressoras</h2><p class="field-help">Em breve: impressão direta na impressora térmica da cozinha e do caixa.</p></div></div>
+            <!-- ABA: IMPRESSORAS (ADMIN) -->
+            <div id="view-impressoras" class="view-section"><div class="view-content-box">
+                <h2>Impressoras</h2><p class="field-help">A <strong>cozinha</strong> recebe os pedidos das comandas. O <strong>caixa</strong> imprime o comprovante da venda (não é documento fiscal).</p>
+                <form id="impressoras-form" onsubmit="event.preventDefault(); salvarImpressoras()">
+                    <div class="impressoras-grid">
+                        <section class="painel" id="impressora-cozinha"><h3>Cozinha</h3></section>
+                        <section class="painel" id="impressora-caixa"><h3>Caixa</h3></section>
+                        <section class="painel">
+                            <h3>Comprovante</h3>
+                            <label for="imp-comprovante">Depois de cada pagamento</label>
+                            <select id="imp-comprovante"><option value="perguntar">Perguntar se quer imprimir</option><option value="sempre">Imprimir sempre</option><option value="nunca">Não imprimir</option></select>
+                            <label for="imp-cabecalho">Cabeçalho</label><textarea id="imp-cabecalho" rows="3" maxlength="300" placeholder="Nome da loja, endereço, telefone"></textarea>
+                            <label for="imp-rodape">Rodapé</label><input id="imp-rodape" maxlength="200">
+                        </section>
+                    </div>
+                    <p id="impressoras-erro" class="form-error" role="alert"></p>
+                    <button class="btn btn-primary" type="submit">Salvar configuração</button>
+                </form>
+                <details class="ajuda-impressora">
+                    <summary>Como ligar a impressora térmica</summary>
+                    <p><strong>Janela do navegador:</strong> funciona com qualquer impressora instalada no Windows. A cada impressão abre a janela de impressão; escolha a impressora térmica e marque para lembrar.</p>
+                    <p><strong>Impressora de rede:</strong> se a impressora tem cabo de rede ou Wi-Fi, informe o IP dela (aparece na folha de autoteste, segurando o botão FEED ao ligar). A porta padrão é 9100.</p>
+                    <p><strong>USB compartilhada no Windows:</strong> instale o driver da impressora, abra <em>Configurações → Bluetooth e dispositivos → Impressoras</em>, entre na impressora, <em>Propriedades da impressora → Compartilhamento</em>, marque "Compartilhar esta impressora" e dê um nome curto, por exemplo <code>COZINHA</code>. Use esse nome aqui.</p>
+                    <p><strong>Acentos:</strong> se aparecerem símbolos estranhos no lugar de "ç" ou "ã", use "Sem acentos".</p>
+                </details>
+            </div></div>
         </div>
     </div>
 
@@ -198,7 +223,7 @@
 
                 <div class="modal-actions">
                     <button class="btn btn-pay" onclick="receberComandaAtual()">Efetuar pagamento</button>
-                    <button class="btn btn-print" onclick="imprimirCozinha()">Imprimir Pendentes</button>
+                    <button class="btn btn-print" onclick="imprimirCozinha()">Enviar para a cozinha</button>
                     <button class="btn btn-action" onclick="abrirTransferencia()">Transferir itens</button>
                     <button class="btn btn-action" onclick="adiantarValor()">Adiantar</button>
                     <button class="btn btn-secondary" onclick="fecharModal()">Sair</button>
@@ -235,6 +260,7 @@
         </div>
     </div>
     <div id="toast" role="status" class="toast" hidden></div>
+    <iframe id="frame-impressao" title="Impressão" aria-hidden="true" tabindex="-1"></iframe>
     <script src="script.js"></script>
 </body>
 </html>

@@ -12,6 +12,8 @@ let produtosBase = [];
 let produtosConectados = false;
 let usuariosBase = [];
 let relatorioAtual = null;
+let configImpressoras = null;
+let vendasHistorico = [];
 
 for (let i = 1; i <= TOTAL_COMANDAS; i++) comandas[i] = comandaVazia();
 
@@ -114,7 +116,7 @@ async function entrar(u) {
     document.getElementById('usuario-nome').textContent = `${u.nome} · ${u.perfil === 'admin' ? 'Administrador' : 'Atendente'}`;
     mostrarTela('screen-app');
     trocarAba('pdv');
-    await Promise.all([carregarProdutos(), carregarComandas(), carregarCaixa(), carregarVendas()]);
+    await Promise.all([carregarProdutos(), carregarComandas(), carregarCaixa(), carregarVendas(), carregarImpressoras()]);
     if (usuario && !caixaAtual) solicitarAberturaCaixa();
 }
 
@@ -502,28 +504,18 @@ function removerItem(index) {
     abrirModalComanda(comandaSelecionada);
 }
 
-function imprimirCozinha() {
+async function imprimirCozinha() {
     if (!comandaSelecionada) return;
-    const c = comandas[comandaSelecionada];
-    const pendentes = c.itens.filter(i => i.requerCozinha && !i.impresso);
-
-    if (pendentes.length === 0) {
-        alert("Não há itens pendentes para enviar à cozinha!");
-        return;
-    }
-
-    let ticket = `*** COZINHA - COMANDA #${comandaSelecionada} ***\n\n`;
-    pendentes.forEach(i => {
-        ticket += `${i.qtd}x ${i.nome}\n`;
-        if (i.obs) ticket += `   Obs: ${i.obs}\n`;
-    });
-
-    alert(`[IMPRESSORA TÉRMICA]\n\n${ticket}`);
-
-    // Marca como impressos
+    const numero = comandaSelecionada;
+    const pendentes = comandas[numero].itens.filter(i => i.requerCozinha && !i.impresso);
+    if (pendentes.length === 0) return avisar('Não há itens pendentes para enviar à cozinha.');
+    try { await imprimir('cozinha', documentoCozinha(numero, pendentes)); }
+    catch (e) { return avisar(e.message); }
+    // Só marca como impresso depois que a impressão foi aceita.
     pendentes.forEach(i => i.impresso = true);
     renderizarTudo();
-    abrirModalComanda(comandaSelecionada);
+    if (comandaSelecionada === numero) abrirModalComanda(numero);
+    avisar('Pedido enviado para a cozinha.');
 }
 
 function adiantarValor() {
@@ -564,6 +556,7 @@ function trocarAba(aba) {
     if (aba === 'relatorios') { if (!document.getElementById('rel-inicio').value) aplicarPeriodoRelatorio(); else carregarRelatorio(); }
     if (aba === 'usuarios') carregarUsuarios();
     if (aba === 'cardapio') carregarProdutos();
+    if (aba === 'impressoras') carregarImpressoras().then(renderizarImpressoras);
 }
 
 function escaparHtml(texto) {
@@ -664,6 +657,8 @@ async function confirmarPagamento() {
         renderizarTudo();
         carregarVendas();
         avisar(crediario ? 'Venda registrada com saldo no crediário.' : 'Pagamento registrado. Troco: ' + formatarMoeda(venda.troco));
+        const quando = configImpressoras?.comprovante || 'perguntar';
+        if (quando === 'sempre' || (quando === 'perguntar' && confirm(`Pagamento registrado${venda.troco ? '. Troco: ' + formatarMoeda(venda.troco) : ''}.\n\nImprimir o comprovante?`))) imprimirComprovante(venda);
     } catch (e) {
         document.getElementById('pag-erro').textContent = e.message;
         if (!caixaAtual || /caixa/i.test(e.message)) carregarCaixa();
@@ -742,7 +737,7 @@ async function renderizarHistorico() {
     try { vendas = await api('/api/vendas' + (ehAdmin() ? `?inicio=${inicio.value}&fim=${fim.value}` : '')); }
     catch (e) { box.textContent = e.message; return; }
     if (!vendas.length) { box.textContent = 'Nenhuma venda registrada.'; return; }
-    box.innerHTML = '<div class="table-scroll"><table class="table-items"><thead><tr><th>Comanda</th><th>Data / hora</th><th>Atendente</th><th>Itens</th><th>Pagamento</th><th class="num">Desconto</th><th class="num">Valor</th><th>Status</th>' + (ehAdmin() ? '<th></th>' : '') + '</tr></thead><tbody>' +
+    box.innerHTML = '<div class="table-scroll"><table class="table-items"><thead><tr><th>Comanda</th><th>Data / hora</th><th>Atendente</th><th>Itens</th><th>Pagamento</th><th class="num">Desconto</th><th class="num">Valor</th><th>Status</th><th></th></tr></thead><tbody>' +
         vendas.map(v => `<tr class="${v.cancelada ? 'venda-cancelada' : ''}">
             <td>#${v.comanda}</td>
             <td>${formatarDataHora(v.dataHora)}</td>
@@ -752,8 +747,9 @@ async function renderizarHistorico() {
             <td class="num">${formatarMoeda(v.desconto)}</td>
             <td class="num">${formatarMoeda(v.valor)}</td>
             <td class="status-venda">${v.cancelada ? `Cancelada<br><small>${escaparHtml(v.motivoCancelamento)}</small>` : escaparHtml(v.status)}</td>
-            ${ehAdmin() ? `<td>${v.cancelada ? '' : `<button class="btn btn-danger btn-sm" onclick="cancelarVenda(${v.id})">Cancelar</button>`}</td>` : ''}
+            <td class="acoes-venda">${v.cancelada ? '' : `<button class="btn btn-secondary btn-sm" onclick="reimprimirVenda(${v.id})">Imprimir</button>`}${ehAdmin() && !v.cancelada ? ` <button class="btn btn-danger btn-sm" onclick="cancelarVenda(${v.id})">Cancelar</button>` : ''}</td>
         </tr>`).join('') + '</tbody></table></div>';
+    vendasHistorico = vendas;
 }
 
 async function cancelarVenda(id) {
@@ -935,6 +931,158 @@ function definirQuantidadeItem(index, valor) {
     }
     if (qtd < item.qtd && !podeReduzirSaldo((totalItemCentavos(item) - totalItemCentavos({...item, qtd})) / 100)) { abrirModalComanda(comandaSelecionada); return; }
     item.qtd = qtd; renderizarTudo(); abrirModalComanda(comandaSelecionada);
+}
+
+// ---------- IMPRESSÃO ----------
+// Os cupons são montados como uma lista de blocos: {t:'texto'|'par'|'linha', v, e, d, b (negrito), g (grande), a ('c' centro, 'd' direita)}.
+// O mesmo documento vira HTML (janela do navegador) ou comandos ESC/POS (servidor, impressora de rede ou USB compartilhada).
+async function carregarImpressoras() {
+    try { configImpressoras = await api('/api/impressoras'); } catch (e) { avisar(e.message); }
+}
+
+async function imprimir(destino, documento) {
+    const cfg = configImpressoras?.[destino] || {modo: 'navegador', colunas: 48};
+    if (cfg.modo === 'navegador') return imprimirNavegador(documento, cfg);
+    await api('/api/imprimir', {method: 'POST', body: {destino, documento}});
+}
+
+function imprimirNavegador(documento, cfg) {
+    const frame = document.getElementById('frame-impressao');
+    frame.srcdoc = htmlImpressao(documento, cfg);
+    return new Promise(resolve => {
+        frame.onload = () => { frame.onload = null; frame.contentWindow.focus(); frame.contentWindow.print(); resolve(); };
+    });
+}
+
+function htmlImpressao(documento, cfg) {
+    const papel = cfg.colunas >= 42 ? 80 : 58;
+    const bloco = b => {
+        const classes = [b.b && 'b', b.g && 'g', b.a === 'c' && 'c', b.a === 'd' && 'd'].filter(Boolean).join(' ');
+        if (b.t === 'linha') return '<div class="linha"></div>';
+        if (b.t === 'par') return `<div class="par ${classes}"><span>${escaparHtml(b.e)}</span><span>${escaparHtml(b.d)}</span></div>`;
+        return `<p class="${classes}">${escaparHtml(b.v)}</p>`;
+    };
+    return `<!doctype html><html><head><meta charset="utf-8"><title>Impressão</title><style>
+        @page { size: ${papel}mm auto; margin: 0; }
+        body { margin: 0; padding: 3mm; width: ${papel - 8}mm; font: 12px/1.35 'Courier New', monospace; color: #000; }
+        p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .b { font-weight: bold; } .g { font-size: 17px; } .c { text-align: center; } .d { text-align: right; }
+        .par { display: flex; justify-content: space-between; gap: 8px; } .linha { border-top: 1px dashed #000; margin: 4px 0; }
+    </style></head><body><!-- ${Date.now()} -->${documento.map(bloco).join('')}</body></html>`;
+}
+
+function agoraTexto() { return new Date().toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}); }
+function quantidadeTexto(item) { return item.unidade === 'KG' ? `${Number(item.qtd).toLocaleString('pt-BR', {minimumFractionDigits: 3})} kg` : `${item.qtd}x`; }
+
+function documentoCozinha(numero, itens) {
+    return [
+        {t: 'texto', v: 'PEDIDO COZINHA', b: true, a: 'c'},
+        {t: 'texto', v: `COMANDA ${String(numero).padStart(2, '0')}`, b: true, g: true, a: 'c'},
+        {t: 'texto', v: `${agoraTexto()} - ${usuario?.nome || ''}`, a: 'c'},
+        {t: 'linha'},
+        ...itens.flatMap(i => [
+            {t: 'texto', v: `${quantidadeTexto(i)} ${i.nome}`, b: true, g: true},
+            ...(i.obs ? [{t: 'texto', v: `>> ${i.obs}`, b: true}] : [])
+        ]),
+        {t: 'linha'}
+    ];
+}
+
+function documentoComprovante(venda) {
+    const doc = (configImpressoras?.cabecalho || '').split('\n').filter(Boolean).map((v, i) => ({t: 'texto', v, b: i === 0, a: 'c'}));
+    doc.push({t: 'texto', v: 'COMPROVANTE DE VENDA', b: true, a: 'c'},
+        {t: 'texto', v: `Comanda ${String(venda.comanda).padStart(2, '0')} - ${formatarDataHora(venda.dataHora)}`, a: 'c'},
+        {t: 'texto', v: `Atendente: ${venda.atendente}`, a: 'c'},
+        {t: 'linha'});
+    venda.itens.forEach(i => {
+        doc.push({t: 'texto', v: i.nome}, {t: 'par', e: `  ${quantidadeTexto(i)} ${formatarMoeda(i.preco)}${i.unidade === 'KG' ? '/kg' : ''}`, d: formatarMoeda(i.total)});
+    });
+    doc.push({t: 'linha'}, {t: 'par', e: 'Subtotal', d: formatarMoeda(venda.subtotal)});
+    if (venda.desconto) doc.push({t: 'par', e: 'Desconto', d: '-' + formatarMoeda(venda.desconto)});
+    doc.push({t: 'par', e: 'TOTAL', d: formatarMoeda(venda.valor), b: true});
+    venda.pagamentos.forEach(p => doc.push({t: 'par', e: p.metodo, d: formatarMoeda(p.valor)}));
+    if (venda.troco) doc.push({t: 'par', e: 'Troco', d: formatarMoeda(venda.troco)});
+    if (venda.cliente) doc.push({t: 'texto', v: `Cliente: ${venda.cliente}`});
+    doc.push({t: 'linha'}, {t: 'texto', v: 'NÃO É DOCUMENTO FISCAL', b: true, a: 'c'});
+    if (configImpressoras?.rodape) doc.push({t: 'texto', v: configImpressoras.rodape, a: 'c'});
+    return doc;
+}
+
+async function imprimirComprovante(venda) {
+    try { await imprimir('caixa', documentoComprovante(venda)); } catch (e) { avisar(e.message); }
+}
+
+function reimprimirVenda(id) {
+    const venda = vendasHistorico.find(v => v.id === id);
+    if (venda) imprimirComprovante(venda);
+}
+
+const MODOS_IMPRESSORA = {navegador: 'Janela de impressão do navegador', rede: 'Impressora de rede (IP)', windows: 'Impressora USB compartilhada no Windows'};
+function renderizarImpressoras() {
+    if (!configImpressoras) return;
+    for (const destino of ['cozinha', 'caixa']) {
+        const cfg = configImpressoras[destino];
+        document.getElementById(`impressora-${destino}`).innerHTML = `
+            <h3>${destino === 'cozinha' ? 'Cozinha' : 'Caixa'}</h3>
+            <label for="imp-${destino}-modo">Como a impressora está ligada</label>
+            <select id="imp-${destino}-modo" onchange="atualizarCampoEndereco('${destino}')">${Object.entries(MODOS_IMPRESSORA).map(([v, t]) => `<option value="${v}" ${cfg.modo === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+            <div id="imp-${destino}-endereco-box"><label id="imp-${destino}-endereco-label" for="imp-${destino}-endereco"></label><input id="imp-${destino}-endereco" maxlength="120" value="${escaparHtml(cfg.endereco)}"></div>
+            <div class="product-fields">
+                <div><label for="imp-${destino}-colunas">Papel</label><select id="imp-${destino}-colunas"><option value="48" ${cfg.colunas === 48 ? 'selected' : ''}>80 mm</option><option value="42" ${cfg.colunas === 42 ? 'selected' : ''}>80 mm (fonte maior)</option><option value="32" ${cfg.colunas === 32 ? 'selected' : ''}>58 mm</option></select></div>
+                <div><label for="imp-${destino}-copias">Cópias</label><select id="imp-${destino}-copias">${[1, 2, 3].map(n => `<option ${cfg.copias === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+            </div>
+            <div id="imp-${destino}-acentos-box"><label for="imp-${destino}-acentos">Acentos</label><select id="imp-${destino}-acentos"><option value="remover" ${cfg.acentos === 'remover' ? 'selected' : ''}>Sem acentos (funciona em todas)</option><option value="cp850" ${cfg.acentos === 'cp850' ? 'selected' : ''}>Com acentos (página de código 850)</option></select></div>
+            <button class="btn btn-secondary" type="button" style="margin-top:16px;" onclick="testarImpressora('${destino}')">Salvar e imprimir teste</button>`;
+        atualizarCampoEndereco(destino);
+    }
+    document.getElementById('imp-comprovante').value = configImpressoras.comprovante;
+    document.getElementById('imp-cabecalho').value = configImpressoras.cabecalho;
+    document.getElementById('imp-rodape').value = configImpressoras.rodape;
+    document.getElementById('impressoras-erro').textContent = '';
+}
+
+function atualizarCampoEndereco(destino) {
+    const modo = document.getElementById(`imp-${destino}-modo`).value;
+    document.getElementById(`imp-${destino}-endereco-box`).hidden = modo === 'navegador';
+    document.getElementById(`imp-${destino}-acentos-box`).hidden = modo === 'navegador';
+    document.getElementById(`imp-${destino}-endereco-label`).textContent = modo === 'rede' ? 'IP da impressora' : 'Nome do compartilhamento';
+    document.getElementById(`imp-${destino}-endereco`).placeholder = modo === 'rede' ? 'Ex.: 192.168.0.50' : 'Ex.: COZINHA';
+}
+
+function lerFormularioImpressoras() {
+    const impressora = destino => ({
+        modo: document.getElementById(`imp-${destino}-modo`).value,
+        endereco: document.getElementById(`imp-${destino}-endereco`).value,
+        colunas: Number(document.getElementById(`imp-${destino}-colunas`).value),
+        acentos: document.getElementById(`imp-${destino}-acentos`).value,
+        copias: Number(document.getElementById(`imp-${destino}-copias`).value)
+    });
+    return {cozinha: impressora('cozinha'), caixa: impressora('caixa'), comprovante: document.getElementById('imp-comprovante').value, cabecalho: document.getElementById('imp-cabecalho').value, rodape: document.getElementById('imp-rodape').value};
+}
+
+async function salvarImpressoras() {
+    document.getElementById('impressoras-erro').textContent = '';
+    try {
+        configImpressoras = await api('/api/impressoras', {method: 'PUT', body: lerFormularioImpressoras()});
+        avisar('Configuração das impressoras salva.');
+        return true;
+    } catch (e) { document.getElementById('impressoras-erro').textContent = e.message; return false; }
+}
+
+async function testarImpressora(destino) {
+    if (!await salvarImpressoras()) return;
+    const doc = [
+        ...configImpressoras.cabecalho.split('\n').filter(Boolean).map(v => ({t: 'texto', v, b: true, a: 'c'})),
+        {t: 'texto', v: `TESTE - IMPRESSORA ${destino === 'cozinha' ? 'DA COZINHA' : 'DO CAIXA'}`, b: true, g: true, a: 'c'},
+        {t: 'texto', v: agoraTexto(), a: 'c'},
+        {t: 'linha'},
+        {t: 'texto', v: 'Acentuação: Açaí, maçã, pão, café'},
+        {t: 'par', e: 'Item à esquerda', d: 'R$ 12,34'},
+        {t: 'linha'},
+        {t: 'texto', v: 'Se este papel saiu, está tudo certo!', a: 'c'}
+    ];
+    try { await imprimir(destino, doc); if (configImpressoras[destino].modo !== 'navegador') avisar('Teste enviado para a impressora.'); }
+    catch (e) { document.getElementById('impressoras-erro').textContent = e.message; }
 }
 
 // ---------- PRODUTOS ----------

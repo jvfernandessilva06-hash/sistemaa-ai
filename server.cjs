@@ -2,6 +2,9 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const net = require('node:net');
+const os = require('node:os');
+const { execFile } = require('node:child_process');
 const { abrirBanco } = require('./banco.cjs');
 const root = __dirname;
 const port = Number(process.env.PORT || 3000);
@@ -331,6 +334,112 @@ function relatorio(ctx) {
  };
 }
 
+// ---------- IMPRESSORAS ----------
+// Cada destino (cozinha e caixa) pode imprimir pela janela do navegador, por uma impressora de rede (porta 9100)
+// ou por uma impressora USB compartilhada no Windows. Nos dois últimos casos o servidor envia comandos ESC/POS.
+const IMPRESSORA_PADRAO = {modo:'navegador', endereco:'', colunas:48, acentos:'remover', copias:1};
+const CONFIG_IMPRESSORAS_PADRAO = {cozinha:{...IMPRESSORA_PADRAO}, caixa:{...IMPRESSORA_PADRAO}, cabecalho:'Delícias Açaí\nPalmas - TO', rodape:'Obrigado pela preferência!', comprovante:'perguntar'};
+function lerConfigImpressoras() {
+ const row = db.prepare("SELECT valor FROM configuracao WHERE chave='impressoras'").get();
+ const salvo = row ? JSON.parse(row.valor) : {};
+ return {...CONFIG_IMPRESSORAS_PADRAO, ...salvo, cozinha:{...IMPRESSORA_PADRAO, ...salvo.cozinha}, caixa:{...IMPRESSORA_PADRAO, ...salvo.caixa}};
+}
+function validarImpressora(i, nome) {
+ if (!i || typeof i !== 'object') falha(400,`Configuração da impressora ${nome} inválida.`);
+ if (!['navegador','rede','windows'].includes(i.modo)) falha(400,`Escolha como a impressora ${nome} está ligada.`);
+ const endereco = texto(i.endereco, 120);
+ if (i.modo === 'rede' && !/^[a-zA-Z0-9.-]+(:\d{1,5})?$/.test(endereco)) falha(400,`Informe o IP da impressora ${nome}, por exemplo 192.168.0.50 ou 192.168.0.50:9100.`);
+ if (i.modo === 'windows' && !/^[\w][\w .-]{0,79}$/.test(endereco)) falha(400,`Informe o nome do compartilhamento da impressora ${nome} (letras, números, espaço, ponto ou hífen).`);
+ if (![32, 42, 48].includes(i.colunas)) falha(400,'Escolha a largura do papel.');
+ if (!['remover','cp850'].includes(i.acentos)) falha(400,'Escolha como imprimir os acentos.');
+ if (!Number.isInteger(i.copias) || i.copias < 1 || i.copias > 3) falha(400,'O número de cópias deve ser de 1 a 3.');
+ return {modo:i.modo, endereco, colunas:i.colunas, acentos:i.acentos, copias:i.copias};
+}
+function salvarConfigImpressoras(ctx) {
+ const b = ctx.body;
+ if (!['perguntar','sempre','nunca'].includes(b.comprovante)) falha(400,'Escolha quando imprimir o comprovante.');
+ const config = {cozinha:validarImpressora(b.cozinha, 'da cozinha'), caixa:validarImpressora(b.caixa, 'do caixa'), cabecalho:texto(b.cabecalho, 300), rodape:texto(b.rodape, 200), comprovante:b.comprovante};
+ db.prepare("INSERT INTO configuracao (chave,valor) VALUES ('impressoras',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").run(JSON.stringify(config));
+ return config;
+}
+function semAcentos(s) { return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7e]/g, '?'); }
+const CP850 = {'á':0xa0,'à':0x85,'â':0x83,'ã':0xc6,'é':0x82,'ê':0x88,'í':0xa1,'ó':0xa2,'ô':0x93,'õ':0xe4,'ú':0xa3,'ü':0x81,'ç':0x87,'Á':0xb5,'À':0xb7,'Â':0xb6,'Ã':0xc7,'É':0x90,'Ê':0xd2,'Í':0xd6,'Ó':0xe0,'Ô':0xe2,'Õ':0xe5,'Ú':0xe9,'Ç':0x80,'º':0xa7,'ª':0xa6};
+function codificar(s, acentos) {
+ if (acentos !== 'cp850') return Buffer.from(semAcentos(s), 'ascii');
+ return Buffer.from([...s].map(c => CP850[c] ?? semAcentos(c).charCodeAt(0)));
+}
+function quebrar(texto, largura) {
+ const linhas = [];
+ for (const paragrafo of texto.split('\n')) {
+  let atual = '';
+  for (const palavra of paragrafo.split(' ')) {
+   for (let p = palavra; p.length; p = p.slice(largura)) {
+    const pedaco = p.slice(0, largura);
+    if (!atual) atual = pedaco;
+    else if ((atual + ' ' + pedaco).length <= largura) atual += ' ' + pedaco;
+    else { linhas.push(atual); atual = pedaco; }
+   }
+  }
+  linhas.push(atual);
+ }
+ return linhas;
+}
+// O documento é uma lista de blocos montada pela tela: {t:'texto'|'par'|'linha', v, e, d, b (negrito), g (grande), a ('c'|'d')}.
+function validarDocumento(doc) {
+ if (!Array.isArray(doc) || !doc.length || doc.length > 400) falha(400,'Nada para imprimir.');
+ return doc.map(b => {
+  if (!b || !['texto','par','linha'].includes(b.t)) falha(400,'Conteúdo de impressão inválido.');
+  return {t:b.t, v:texto(b.v, 500), e:texto(b.e, 200), d:texto(b.d, 60), b:b.b === true, g:b.g === true, a:['c','d'].includes(b.a) ? b.a : 'e'};
+ });
+}
+function escpos(doc, cfg) {
+ const partes = [Buffer.from([0x1b, 0x40])];
+ if (cfg.acentos === 'cp850') partes.push(Buffer.from([0x1b, 0x74, 2]));
+ for (const b of doc) {
+  const largura = b.g ? Math.floor(cfg.colunas / 2) : cfg.colunas;
+  partes.push(Buffer.from([0x1b, 0x61, b.a === 'c' ? 1 : b.a === 'd' ? 2 : 0, 0x1b, 0x45, b.b ? 1 : 0, 0x1d, 0x21, b.g ? 0x11 : 0]));
+  let linhas;
+  if (b.t === 'linha') linhas = ['-'.repeat(largura)];
+  else if (b.t === 'par') { const esquerda = b.e.slice(0, Math.max(0, largura - b.d.length - 1)); linhas = [esquerda + ' '.repeat(largura - esquerda.length - b.d.length) + b.d]; }
+  else linhas = quebrar(b.v, largura);
+  for (const linha of linhas) partes.push(codificar(linha, cfg.acentos), Buffer.from([0x0a]));
+ }
+ partes.push(Buffer.from([0x1b, 0x45, 0, 0x1d, 0x21, 0, 0x1b, 0x61, 0, 0x1b, 0x64, 4, 0x1d, 0x56, 0x42, 0]));
+ const um = Buffer.concat(partes);
+ return Buffer.concat(Array(cfg.copias).fill(um));
+}
+function enviarRede(endereco, dados) {
+ const [host, porta = '9100'] = endereco.split(':');
+ return new Promise((resolve, reject) => {
+  const socket = net.createConnection({host, port:Number(porta)});
+  socket.setTimeout(5000, () => socket.destroy(new Error('a impressora não respondeu')));
+  socket.on('connect', () => socket.end(dados));
+  socket.on('error', reject);
+  socket.on('close', erro => { if (!erro) resolve(); });
+ });
+}
+function enviarWindows(compartilhamento, dados) {
+ const arquivo = path.join(os.tmpdir(), `acai-impressao-${crypto.randomBytes(6).toString('hex')}.bin`);
+ fs.writeFileSync(arquivo, dados);
+ return new Promise((resolve, reject) => {
+  execFile('cmd.exe', ['/d', '/c', 'copy', '/b', arquivo, `\\\\localhost\\${compartilhamento}`], {windowsHide:true, timeout:15000}, (erro, saida) => {
+   fs.rm(arquivo, {force:true}, () => {});
+   if (erro) reject(new Error(String(saida || erro.message).trim() || 'falha ao enviar'));
+   else resolve();
+  });
+ });
+}
+async function imprimir(ctx) {
+ const destino = ctx.body.destino;
+ if (!['cozinha','caixa'].includes(destino)) falha(400,'Destino de impressão inválido.');
+ const cfg = lerConfigImpressoras()[destino];
+ if (cfg.modo === 'navegador') falha(409,'Esta impressora está configurada para imprimir pelo navegador.');
+ const dados = escpos(validarDocumento(ctx.body.documento), cfg);
+ try { await (cfg.modo === 'rede' ? enviarRede(cfg.endereco, dados) : enviarWindows(cfg.endereco, dados)); }
+ catch(e) { falha(502, `Não foi possível imprimir (${e.message}). Confira se a impressora está ligada e configurada.`); }
+ return {ok:true};
+}
+
 // ---------- ROTAS ----------
 // [método, endereço, quem pode acessar, ação]
 const rotas = [
@@ -353,7 +462,10 @@ const rotas = [
  ['GET', /^\/api\/vendas$/, 'logado', listarVendas],
  ['POST', /^\/api\/vendas$/, 'logado', registrarVenda],
  ['POST', /^\/api\/vendas\/(\d+)\/cancelar$/, 'admin', cancelarVenda],
- ['GET', /^\/api\/relatorios$/, 'admin', relatorio]
+ ['GET', /^\/api\/relatorios$/, 'admin', relatorio],
+ ['GET', /^\/api\/impressoras$/, 'logado', lerConfigImpressoras],
+ ['PUT', /^\/api\/impressoras$/, 'admin', salvarConfigImpressoras],
+ ['POST', /^\/api\/imprimir$/, 'logado', imprimir]
 ];
 
 function json(res,status,body) { res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}); res.end(JSON.stringify(body)); }
