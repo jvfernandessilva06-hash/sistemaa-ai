@@ -408,6 +408,7 @@ function abrirModalComanda(numero) {
     const c = comandas[numero];
 
     document.getElementById('modal-titulo').innerText = `Comanda #${numero.toString().padStart(2, '0')}`;
+    document.getElementById('modal-vibra').value = c.vibra || numero;
 
     const tbody = document.getElementById('modal-tabela-itens');
     tbody.innerHTML = '';
@@ -679,13 +680,25 @@ function removerItem(index) {
     abrirModalComanda(comandaSelecionada);
 }
 
+// A comanda que vibra já vem com o número da comanda; só guarda quando é diferente.
+function definirVibra(valor) {
+    if (!comandaSelecionada) return;
+    const c = comandas[comandaSelecionada], campo = document.getElementById('modal-vibra'), n = Number(valor);
+    if (valor === '' || n === comandaSelecionada) delete c.vibra;
+    else if (Number.isInteger(n) && n >= 1 && n <= 999) c.vibra = n;
+    else avisar('Digite o número da comanda que vibra, de 1 a 999.');
+    campo.value = c.vibra || comandaSelecionada;
+    renderizarTudo();
+}
+
 async function imprimirCozinha() {
     if (!comandaSelecionada) return;
     const numero = comandaSelecionada;
     const pendentes = comandas[numero].itens.filter(i => i.requerCozinha && !i.impresso);
     if (pendentes.length === 0) return avisar('Não há itens pendentes para enviar à cozinha.');
+    const vibra = comandas[numero].vibra || numero;
     let resultado;
-    try { resultado = await imprimir('cozinha', documentoCozinha(numero, pendentes), {descricao: `Pedido da comanda ${String(numero).padStart(2, '0')}`}); }
+    try { resultado = await imprimir('cozinha', documentoCozinha(numero, pendentes, vibra), {descricao: `Pedido da comanda ${String(numero).padStart(2, '0')} (vibra ${String(vibra).padStart(2, '0')})`}); }
     catch (e) { return avisar(e.message); }
     // Só marca como impresso depois que a impressão foi aceita (ou guardada na fila, que imprime sozinha).
     pendentes.forEach(i => i.impresso = true);
@@ -1375,9 +1388,11 @@ function agoraTexto() { return new Date().toLocaleString('pt-BR', {day: '2-digit
 function quantidadeTexto(item) { return item.unidade === 'KG' ? `${Number(item.qtd).toLocaleString('pt-BR', {minimumFractionDigits: 3})} kg` : `${item.qtd}x`; }
 
 // A cozinha só precisa saber o que preparar e qual comanda chamar: sem loja, preços ou atendente.
-function documentoCozinha(numero, itens) {
+// O número da comanda que vibra é o que a cozinha digita para chamar o cliente.
+function documentoCozinha(numero, itens, vibra = numero) {
     return [
         {t: 'texto', v: `COMANDA ${String(numero).padStart(2, '0')}`, b: true, g: 2, a: 'c'},
+        {t: 'texto', v: `VIBRA ${String(vibra).padStart(2, '0')}`, b: true, g: 2, a: 'c'},
         {t: 'linha'},
         ...itens.flatMap(i => [
             {t: 'texto', v: `${quantidadeTexto(i)} ${i.nome}`, b: true, g: 1},

@@ -220,7 +220,12 @@
     <div class="modal-overlay" id="modal-comanda" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
         <div class="modal-container">
             <div class="modal-header">
-                <h2 id="modal-titulo">Comanda #00</h2>
+                <div class="modal-titulo-grupo">
+                    <h2 id="modal-titulo">Comanda #00</h2>
+                    <label class="vibra-campo" for="modal-vibra" title="Número da comanda que vibra. Já vem igual ao da comanda; mude se for diferente.">Vibra nº
+                        <input id="modal-vibra" type="number" min="1" max="999" step="1" inputmode="numeric" onchange="definirVibra(this.value)" onfocus="this.select()">
+                    </label>
+                </div>
                 <button class="close-btn" type="button" aria-label="Fechar comanda" onclick="fecharModal()">&times;</button>
             </div>
             <div class="modal-body">

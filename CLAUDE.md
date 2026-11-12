@@ -28,7 +28,7 @@ Use a skill **triagem-correcao** (avaliar → corrigir → provar). Nada de mexe
 
 - Remover item da comanda **não pede senha**; só fica registrado em `registro_comandas`.
 - **Sem cupom de "cancelado"** para a cozinha.
-- Pedido da cozinha: só número da comanda, itens, quantidades, adicionais e observações (sem loja, preço, hora ou atendente).
+- Pedido da cozinha: só número da comanda, número da comanda que vibra (campo "Vibra nº" ao lado do título; padrão = número da comanda), itens, quantidades, adicionais e observações (sem loja, preço, hora ou atendente).
 - **Adicionais são opcionais**: só abrem pelo botão "Adicionais" do item, nunca sozinhos.
 - **Crediário só para contas cadastradas**: funcionários (CPF) e a própria loja (CNPJ).
 - A frente de caixa precisa mostrar **as 50 comandas sem rolar** num notebook (1366×650). O dono achou a versão maior "grande demais".

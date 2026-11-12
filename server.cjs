@@ -253,7 +253,10 @@ function validarComanda(c) {
  if (![adiantamento, desconto].every(v => Number.isFinite(v) && v >= 0)) falha(400,'Valores da comanda inválidos.');
  const subtotal = itens.reduce((s, i) => s + totalItemCentavos(i), 0);
  if (centavos(adiantamento) + centavos(desconto) > subtotal) falha(400,'O desconto e o adiantamento não podem passar do valor dos itens.');
- return {aberta:c.aberta === true || itens.length > 0, itens, adiantamento, desconto};
+ // Número da comanda que vibra, só quando é diferente do número da comanda (sai no pedido da cozinha).
+ const vibra = c.vibra === undefined || c.vibra === null ? null : Number(c.vibra);
+ if (vibra !== null && (!Number.isInteger(vibra) || vibra < 1 || vibra > 999)) falha(400,'O número da comanda que vibra deve ser de 1 a 999.');
+ return {aberta:c.aberta === true || itens.length > 0, itens, adiantamento, desconto, ...(vibra ? {vibra} : {})};
 }
 function salvarComandas(ctx) {
  const recebidas = ctx.body.comandas;

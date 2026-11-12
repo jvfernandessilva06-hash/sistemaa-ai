@@ -68,6 +68,11 @@ function cliente() {
  assert.equal((await atendente('/api/comandas','PUT',{comandas:{2:{aberta:true,itens:[{...acai500,qtd:1.5}],adiantamento:0,desconto:0}}})).status, 400);
  assert.equal((await atendente('/api/comandas','PUT',{comandas:{51:{aberta:true,itens,adiantamento:0,desconto:0}}})).status, 400);
  assert.equal((await admin('/api/comandas')).body[1].itens.length, 2, 'comanda salva no banco aparece para outro usuário');
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:true,itens,adiantamento:0,desconto:0,vibra:0}}})).status, 400, 'comanda que vibra inválida');
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:true,itens,adiantamento:0,desconto:0,vibra:'7; x'}}})).status, 400);
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:true,itens,adiantamento:0,desconto:0,vibra:17}}})).status, 200);
+ assert.equal((await admin('/api/comandas')).body[3].vibra, 17, 'guarda o número da comanda que vibra');
+ assert.equal((await atendente('/api/comandas','PUT',{comandas:{3:{aberta:false,itens:[],adiantamento:0,desconto:0}}})).status, 200);
  assert.equal((await atendente('/api/vendas','POST',{comanda:1,desconto:0,pagamentos:[{metodo:'Pix',valor:5347}]})).status, 409, 'sem caixa aberto');
  assert.equal((await atendente('/api/caixa/abrir','POST',{fundo:100})).status, 201);
  assert.equal((await admin('/api/caixa/abrir','POST',{fundo:50})).status, 409);

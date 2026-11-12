@@ -109,6 +109,9 @@ form input, form select { width: 100%; }
 .modal-md { width: 600px; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--line); }
 .modal-header h2 { font-size: 1.2rem; }
+.modal-titulo-grupo { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.vibra-campo { display: flex; align-items: center; gap: 6px; font-size: .9rem; font-weight: 600; color: var(--muted); }
+.vibra-campo input { width: 70px; font-size: 1.1rem; font-weight: 700; text-align: center; color: var(--ink); }
 .close-btn { width: var(--toque); height: var(--toque); font-size: 1.6rem; line-height: 1; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; flex-shrink: 0; }
 .close-btn:hover { background: var(--accent-claro); }
 .modal-body { padding: 14px 20px; overflow-y: auto; flex: 1; }
