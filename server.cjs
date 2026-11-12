@@ -303,7 +303,6 @@ function registrarVenda(ctx) {
   return {metodo:p.metodo, valor:p.valor};
  });
  if (new Set(pagamentos.map(p => p.metodo)).size !== pagamentos.length) falha(400,'Cada forma de pagamento deve aparecer uma vez.');
- const cliente = texto(body.cliente, 120);
  const id = transacao(() => {
   const caixa = caixaAberto();
   if (!caixa) falha(409,'Abra o caixa antes de receber pagamentos.');
@@ -319,11 +318,14 @@ function registrarVenda(ctx) {
   if (informado < aPagar) falha(400,'Valor insuficiente. Complete o saldo nas formas de pagamento.');
   const troco = informado - aPagar;
   if (troco > dinheiro) falha(400,'Os valores das outras formas excedem o total. O troco só pode sair do dinheiro.');
-  if (crediario && !cliente) falha(400,'Informe o cliente do crediário.');
+  // Crediário só para contas cadastradas (funcionários com CPF ou a empresa com CNPJ).
+  const conta = crediario ? db.prepare('SELECT * FROM contas_crediario WHERE id=? AND ativo=1').get(Number(body.contaCrediario) || 0) : null;
+  if (crediario && !conta) falha(400,'Escolha o funcionário ou a empresa do crediário.');
+  const cliente = conta ? conta.nome : '';
   const status = crediario ? (crediario === aPagar ? 'A receber' : 'Parcial a receber') : 'Pago';
   // total_centavos é o faturamento da venda (itens menos desconto); o adiantamento é só uma forma de pagamento.
-  const vendaId = Number(db.prepare('INSERT INTO vendas (caixa_id,usuario_id,comanda,subtotal_centavos,desconto_centavos,adiantamento_centavos,total_centavos,recebido_centavos,troco_centavos,cliente,status) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-   .run(caixa.id, usuario.id, numero, subtotal, desconto, adiantamento, subtotal - desconto, informado, troco, crediario ? cliente : '', status).lastInsertRowid);
+  const vendaId = Number(db.prepare('INSERT INTO vendas (caixa_id,usuario_id,comanda,subtotal_centavos,desconto_centavos,adiantamento_centavos,total_centavos,recebido_centavos,troco_centavos,cliente,status,conta_crediario_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+   .run(caixa.id, usuario.id, numero, subtotal, desconto, adiantamento, subtotal - desconto, informado, troco, cliente, status, conta?.id ?? null).lastInsertRowid);
   const inserirItem = db.prepare('INSERT INTO venda_itens (venda_id,produto_id,codigo,nome,categoria,unidade,quantidade,preco_centavos,total_centavos,observacao,adicional_de) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
   for (const i of c.itens) {
    const paiId = Number(inserirItem.run(vendaId, i.id, i.codigo || '', i.nome, i.categoria || '', i.unidade || 'UN', i.qtd, centavos(i.preco), baseItemCentavos(i), i.obs || '', null).lastInsertRowid);
@@ -382,38 +384,77 @@ function cancelarVenda(ctx) {
 }
 
 // ---------- CREDIÁRIO ----------
-// O que cada cliente ainda deve: parte da venda paga no crediário menos o que já foi recebido depois.
+// Só funcionários (CPF) e a própria empresa (CNPJ) compram no crediário, e precisam estar cadastrados antes.
+function soDigitos(valor) { return String(valor || '').replace(/\D/g, ''); }
+function cpfValido(cpf) {
+ if (!/^\d{11}$/.test(cpf) || /^(\d)\1+$/.test(cpf)) return false;
+ const digito = n => { const soma = [...cpf.slice(0, n)].reduce((s, d, i) => s + Number(d) * (n + 1 - i), 0); return (soma * 10 % 11) % 10; };
+ return digito(9) === Number(cpf[9]) && digito(10) === Number(cpf[10]);
+}
+function cnpjValido(cnpj) {
+ if (!/^\d{14}$/.test(cnpj) || /^(\d)\1+$/.test(cnpj)) return false;
+ const digito = n => { const pesos = n === 12 ? [5,4,3,2,9,8,7,6,5,4,3,2] : [6,5,4,3,2,9,8,7,6,5,4,3,2]; const resto = [...cnpj.slice(0, n)].reduce((s, d, i) => s + Number(d) * pesos[i], 0) % 11; return resto < 2 ? 0 : 11 - resto; };
+ return digito(12) === Number(cnpj[12]) && digito(13) === Number(cnpj[13]);
+}
+function contaPublica(c) { return {id:c.id, nome:c.nome, tipo:c.tipo, documento:c.documento, ativo:!!c.ativo}; }
+function listarContas() { return db.prepare("SELECT * FROM contas_crediario ORDER BY ativo DESC, tipo='empresa' DESC, nome COLLATE NOCASE").all().map(contaPublica); }
+function salvarConta(ctx) {
+ const b = ctx.body;
+ const nome = texto(b.nome, 121);
+ if (!nome || nome.length > 120) falha(400,'Informe o nome.');
+ if (!['funcionario','empresa'].includes(b.tipo)) falha(400,'Escolha se é funcionário ou empresa.');
+ const documento = soDigitos(b.documento);
+ if (b.tipo === 'funcionario' && !cpfValido(documento)) falha(400,'CPF inválido. Confira os números.');
+ if (b.tipo === 'empresa' && !cnpjValido(documento)) falha(400,'CNPJ inválido. Confira os números.');
+ const ativo = b.ativo !== false;
+ try {
+  if (ctx.params[0]) {
+   if (!db.prepare('UPDATE contas_crediario SET nome=?, tipo=?, documento=?, ativo=? WHERE id=?').run(nome, b.tipo, documento, Number(ativo), Number(ctx.params[0])).changes) falha(404,'Cadastro não encontrado.');
+  } else {
+   db.prepare('INSERT INTO contas_crediario (nome,tipo,documento,ativo) VALUES (?,?,?,?)').run(nome, b.tipo, documento, Number(ativo));
+   ctx.status = 201;
+  }
+ } catch(e) {
+  if (String(e.message).includes('UNIQUE')) falha(409,'Este CPF/CNPJ já está cadastrado.');
+  throw e;
+ }
+ return listarContas();
+}
+
+// O que cada conta ainda deve: parte da venda paga no crediário menos o que já foi recebido depois.
+// Vendas antigas, de antes do cadastro de contas, continuam agrupadas pelo nome digitado.
 const chaveCliente = nome => nome.trim().toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
 function vendasEmAberto() {
- return db.prepare(`SELECT v.id, v.cliente, v.data_hora, v.comanda,
+ return db.prepare(`SELECT v.id, v.cliente, v.data_hora, v.comanda, v.conta_crediario_id, c.nome AS conta_nome, c.tipo AS conta_tipo, c.documento AS conta_documento,
   (SELECT COALESCE(SUM(valor_centavos),0) FROM venda_pagamentos WHERE venda_id=v.id AND metodo='Crediário') AS credito,
   (SELECT COALESCE(SUM(valor_centavos),0) FROM crediario_pagamentos WHERE venda_id=v.id) AS pago
-  FROM vendas v WHERE v.cancelada=0 AND v.cliente<>'' ORDER BY v.id`).all().filter(v => v.credito > v.pago);
+  FROM vendas v LEFT JOIN contas_crediario c ON c.id=v.conta_crediario_id WHERE v.cancelada=0 AND v.cliente<>'' ORDER BY v.id`).all()
+  .filter(v => v.credito > v.pago)
+  .map(v => ({...v, chave:v.conta_crediario_id ? `conta-${v.conta_crediario_id}` : `nome-${chaveCliente(v.cliente)}`}));
 }
 function listarCrediario() {
  const clientes = new Map();
  for (const v of vendasEmAberto()) {
-  const chave = chaveCliente(v.cliente);
-  if (!clientes.has(chave)) clientes.set(chave, {cliente:v.cliente, saldo:0, vendas:[]});
-  const c = clientes.get(chave);
+  if (!clientes.has(v.chave)) clientes.set(v.chave, {chave:v.chave, cliente:v.conta_nome || v.cliente, tipo:v.conta_tipo || null, documento:v.conta_documento || '', saldo:0, vendas:[]});
+  const c = clientes.get(v.chave);
   c.saldo += v.credito - v.pago;
   c.vendas.push({id:v.id, dataHora:v.data_hora, comanda:v.comanda, valor:reais(v.credito), pago:reais(v.pago), saldo:reais(v.credito - v.pago)});
  }
  return [...clientes.values()].map(c => ({...c, saldo:reais(c.saldo)})).sort((a, b) => b.saldo - a.saldo);
 }
 function receberCrediario(ctx) {
- const {cliente, valor, metodo} = ctx.body;
- if (typeof cliente !== 'string' || !cliente.trim()) falha(400,'Escolha o cliente.');
+ const {chave, valor, metodo} = ctx.body;
+ if (typeof chave !== 'string' || !chave) falha(400,'Escolha quem está pagando.');
  if (!['Dinheiro','Pix','Débito','Crédito'].includes(metodo)) falha(400,'Escolha a forma de pagamento.');
  if (typeof valor !== 'number' || !Number.isFinite(valor) || valor <= 0) falha(400,'Informe um valor maior que zero.');
  let restante = centavos(valor);
  transacao(() => {
   const caixa = caixaAberto();
   if (!caixa) falha(409,'Abra o caixa antes de receber.');
-  const abertas = vendasEmAberto().filter(v => chaveCliente(v.cliente) === chaveCliente(cliente));
+  const abertas = vendasEmAberto().filter(v => v.chave === chave);
   const saldo = abertas.reduce((s, v) => s + v.credito - v.pago, 0);
-  if (!saldo) falha(404,'Este cliente não tem nada a pagar.');
-  if (restante > saldo) falha(400,`O valor passa do que o cliente deve (${(saldo / 100).toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}).`);
+  if (!saldo) falha(404,'Não há nada a pagar nesta conta.');
+  if (restante > saldo) falha(400,`O valor passa do que está devendo (${(saldo / 100).toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}).`);
   // Abate primeiro as compras mais antigas.
   for (const v of abertas) {
    if (!restante) break;
@@ -742,6 +783,9 @@ const rotas = [
  ['GET', /^\/api\/impressoras\/procurar$/, 'admin', procurarImpressoras],
  ['POST', /^\/api\/caixa\/movimento$/, 'logado', movimentarCaixa],
  ['GET', /^\/api\/crediario$/, 'logado', listarCrediario],
+ ['GET', /^\/api\/crediario\/contas$/, 'logado', listarContas],
+ ['POST', /^\/api\/crediario\/contas$/, 'admin', salvarConta],
+ ['PUT', /^\/api\/crediario\/contas\/(\d+)$/, 'admin', salvarConta],
  ['POST', /^\/api\/crediario\/receber$/, 'logado', receberCrediario],
  ['GET', /^\/api\/registro$/, 'admin', listarRegistro],
  ['GET', /^\/api\/backup$/, 'admin', infoBackup],

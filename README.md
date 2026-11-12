@@ -31,12 +31,12 @@ Para restaurar: feche o sistema, copie o arquivo do backup para `data/produtos.d
 
 ## Adicionais
 
-No cadastro de produtos, marque **"É um adicional"** nos complementos (Nutella, granola, leite Ninho…) e **"Pede adicionais ao lançar"** nos produtos que recebem complementos (açaí). Ao lançar um açaí na comanda, abre a escolha de adicionais; o item fica como "Açaí 500ml + Nutella + Granola", com um preço só, e assim sai na cozinha. Adicionais contam por unidade (2 açaís com Nutella = 2 Nutellas) e aparecem no relatório de produtos.
+No cadastro de produtos, marque **"É um adicional"** nos complementos (Nutella, granola, leite Ninho…) e **"Pede adicionais ao lançar"** nos produtos que recebem complementos (açaí). Na comanda, o botão **Adicionais** do item (igual ao de observação) abre a escolha, só quando precisar; o item fica como "Açaí 500ml + Nutella + Granola", com um preço só, e assim sai na cozinha. Adicionais contam por unidade (2 açaís com Nutella = 2 Nutellas) e aparecem no relatório de produtos.
 
 ## Caixa e crediário
 
 - **Retirada (sangria)** e **reforço (suprimento)** ficam registrados no fechamento e entram no dinheiro esperado.
-- **Crediário:** a aba mostra quem deve quanto. Ao receber, o valor abate primeiro as compras mais antigas e entra no caixa aberto pela forma de pagamento escolhida.
+- **Crediário:** só para quem está cadastrado na aba Crediário: funcionários (com CPF) e a própria loja (com CNPJ). No pagamento, escolha a conta na lista. A aba mostra quem deve quanto. Ao receber, o valor abate primeiro as compras mais antigas e entra no caixa aberto pela forma de pagamento escolhida.
 - **Itens retirados:** tudo que for removido ou transferido de uma comanda fica registrado (quem, quando, o quê e se já tinha ido para a cozinha). Não pede senha; o administrador consulta no Histórico.
 
 ## Relatórios

@@ -76,7 +76,7 @@ function cliente() {
  // Venda: 2 x 18,00 + 0,350 kg x 49,90 (17,465 -> 17,47) = 53,47; desconto 1,00 -> 52,47.
  assert.equal((await atendente('/api/vendas','POST',{comanda:1,desconto:100,pagamentos:[{metodo:'Pix',valor:5000}]})).status, 400, 'valor insuficiente');
  assert.equal((await atendente('/api/vendas','POST',{comanda:1,desconto:100,pagamentos:[{metodo:'Pix',valor:6000}]})).status, 400, 'troco sem dinheiro');
- assert.equal((await atendente('/api/vendas','POST',{comanda:1,desconto:0,pagamentos:[{metodo:'Crediário',valor:5347}]})).status, 400, 'crediário sem cliente');
+ assert.equal((await atendente('/api/vendas','POST',{comanda:1,desconto:0,pagamentos:[{metodo:'Crediário',valor:5347}]})).status, 400, 'crediário sem conta cadastrada');
  const venda = await atendente('/api/vendas','POST',{comanda:1,desconto:100,pagamentos:[{metodo:'Pix',valor:2000},{metodo:'Dinheiro',valor:4000}]});
  assert.equal(venda.status, 201);
  assert.equal(venda.body.subtotal, 53.47); assert.equal(venda.body.valor, 52.47); assert.equal(venda.body.troco, 7.53);
@@ -125,14 +125,26 @@ function cliente() {
  assert.deepEqual(vendaAdicionais.body.itens[0].adicionais.map(a => [a.nome, a.qtd, a.total]), [['Nutella', 2, 10], ['Leite Ninho', 2, 7]]);
  assert.equal((await admin('/api/relatorios')).body.produtos.find(p => p.nome === 'Nutella').quantidade, 3, 'adicionais contam no relatório');
 
- // Crediário: deve 4,00, paga 1,50 em dinheiro e 2,50 no Pix (nome escrito diferente é o mesmo cliente).
+ // Crediário só para contas cadastradas: funcionário com CPF ou a empresa com CNPJ.
+ assert.equal((await admin('/api/crediario/contas','POST',{nome:'Maria Silva',tipo:'funcionario',documento:'123.456.789-00'})).status, 400, 'CPF inválido');
+ assert.equal((await atendente('/api/crediario/contas','POST',{nome:'Maria Silva',tipo:'funcionario',documento:'529.982.247-25'})).status, 403);
+ assert.equal((await admin('/api/crediario/contas','POST',{nome:'Maria Silva',tipo:'funcionario',documento:'529.982.247-25'})).status, 201);
+ assert.equal((await admin('/api/crediario/contas','POST',{nome:'Outra',tipo:'funcionario',documento:'52998224725'})).status, 409, 'CPF repetido');
+ assert.equal((await admin('/api/crediario/contas','POST',{nome:'Delícias Açaí',tipo:'empresa',documento:'11.222.333/0001-81'})).status, 201);
+ const contas = (await atendente('/api/crediario/contas')).body;
+ assert.deepEqual(contas.map(c => [c.nome, c.tipo]), [['Delícias Açaí','empresa'], ['Maria Silva','funcionario']]);
+ const maria = contas.find(c => c.nome === 'Maria Silva');
+ // Deve 4,00, paga 1,50 em dinheiro e 2,50 no Pix.
  await atendente('/api/comandas','PUT',{comandas:{5:{aberta:true,itens:[{...itemC,uid:'dddddd4'}],adiantamento:0,desconto:0}}});
- const fiado = await atendente('/api/vendas','POST',{comanda:5,desconto:0,pagamentos:[{metodo:'Crediário',valor:400}],cliente:'Maria Silva'});
- assert.equal(fiado.body.status, 'A receber');
- assert.deepEqual((await atendente('/api/crediario')).body.map(c => [c.cliente, c.saldo]), [['Maria Silva', 4]]);
- assert.deepEqual((await atendente('/api/crediario/receber','POST',{cliente:'maria silva ',valor:1.5,metodo:'Dinheiro'})).body.clientes.map(c => c.saldo), [2.5]);
- assert.equal((await atendente('/api/crediario/receber','POST',{cliente:'Maria Silva',valor:3,metodo:'Pix'})).status, 400, 'não recebe mais do que deve');
- assert.deepEqual((await atendente('/api/crediario/receber','POST',{cliente:'Maria Silva',valor:2.5,metodo:'Pix'})).body.clientes, []);
+ assert.equal((await atendente('/api/vendas','POST',{comanda:5,desconto:0,pagamentos:[{metodo:'Crediário',valor:400}],cliente:'Qualquer nome'})).status, 400, 'nome solto não vale');
+ const fiado = await atendente('/api/vendas','POST',{comanda:5,desconto:0,pagamentos:[{metodo:'Crediário',valor:400}],contaCrediario:maria.id});
+ assert.equal(fiado.body.status, 'A receber'); assert.equal(fiado.body.cliente, 'Maria Silva');
+ const devedores = (await atendente('/api/crediario')).body;
+ assert.deepEqual(devedores.map(c => [c.cliente, c.saldo, c.documento]), [['Maria Silva', 4, '52998224725']]);
+ const chave = devedores[0].chave;
+ assert.deepEqual((await atendente('/api/crediario/receber','POST',{chave,valor:1.5,metodo:'Dinheiro'})).body.clientes.map(c => c.saldo), [2.5]);
+ assert.equal((await atendente('/api/crediario/receber','POST',{chave,valor:3,metodo:'Pix'})).status, 400, 'não recebe mais do que deve');
+ assert.deepEqual((await atendente('/api/crediario/receber','POST',{chave,valor:2.5,metodo:'Pix'})).body.clientes, []);
  assert.equal((await admin('/api/vendas')).body.find(v => v.id === fiado.body.id).status, 'Quitado');
 
  // Sangria e suprimento entram no dinheiro esperado: 50 + 1,50 (crediário) + 5 - 10 = 46,50.

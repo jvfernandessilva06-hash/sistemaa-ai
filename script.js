@@ -401,18 +401,6 @@ function renderizarPagas() {
     });
 }
 
-function renderizarAtalhosProdutos() {
-    const container = document.getElementById('quick-products-bar');
-    container.innerHTML = '';
-    produtosBase.filter(prod => prod.ativo && !prod.adicional).slice(0, 8).forEach(prod => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn btn-secondary btn-sm';
-        btn.innerText = `+ ${prod.nome}${prod.unidade === 'KG' ? ' / kg' : ''}`;
-        btn.onclick = () => inserirProdutoDireto(prod);
-        container.appendChild(btn);
-    });
-}
 
 function abrirModalComanda(numero) {
     if (comandaSelecionada !== numero) limparBuscaComanda();
@@ -492,11 +480,6 @@ function inserirProdutoDireto(prod) {
 
     renderizarTudo();
     abrirModalComanda(comandaSelecionada);
-    // Produtos como o açaí já abrem a escolha de adicionais.
-    if (prod.aceitaAdicionais && produtosBase.some(p => p.ativo && p.adicional)) {
-        abrirAdicionais(comandas[comandaSelecionada].itens.length - 1);
-        return true;
-    }
     return false;
 }
 
@@ -753,7 +736,7 @@ function trocarAba(aba) {
     botao.setAttribute('aria-current', 'page');
     document.getElementById(`view-${aba}`).classList.add('active');
 
-    if (aba === 'crediario') carregarCrediario();
+    if (aba === 'crediario') { carregarCrediario(); if (ehAdmin() && !document.getElementById('conta-id').value) novaConta(); }
     if (aba === 'historico') renderizarHistorico();
     if (aba === 'caixa') renderizarFechamento();
     if (aba === 'relatorios') { if (!document.getElementById('rel-inicio').value) aplicarPeriodoRelatorio(); else carregarRelatorio(); }
@@ -792,11 +775,39 @@ function receberComandaAtual() {
     document.getElementById('pag-tipo-desconto').value = 'valor';
     document.getElementById('pag-desconto').value = fin.desconto ? fin.desconto.toFixed(2) : '';
     document.querySelectorAll('.payment-card input').forEach(input => { input.value = ''; });
-    document.getElementById('pag-cliente').value = '';
+    preencherContasPagamento();
+    renderizarItensPagamento();
     atualizarPagamento();
     document.getElementById('modal-comanda').inert = true;
     document.getElementById('modal-pagamento').classList.add('active');
     document.getElementById('pag-desconto').focus();
+}
+
+// Lista da comanda ao lado do pagamento: marcando os itens de uma pessoa, aparece quanto ela paga.
+function renderizarItensPagamento() {
+    const itens = comandas[comandaSelecionada].itens;
+    document.getElementById('pag-itens').innerHTML = itens.map((item, i) => {
+        const adicionais = (item.adicionais || []).map(a => `+ ${a.qtd > 1 ? a.qtd + 'x ' : ''}${escaparHtml(a.nome)}`).join(', ');
+        return `<li><label class="pag-item">
+            <input type="checkbox" data-indice="${i}" onchange="somarItensMarcados()">
+            <span class="pag-item-nome"><strong>${item.unidade === 'KG' ? quantidadeTexto(item) : item.qtd + 'x'} ${escaparHtml(item.nome)}</strong>${adicionais ? `<small>${adicionais}</small>` : ''}${item.unidade === 'UN' && item.qtd > 1 ? `<small>${formatarMoeda(totalItemCentavos({...item, qtd: 1}) / 100)} cada</small>` : ''}</span>
+            <span class="pag-item-valor">${formatarMoeda(totalItemCentavos(item) / 100)}</span>
+        </label></li>`;
+    }).join('');
+    somarItensMarcados();
+}
+function somarItensMarcados() {
+    const itens = comandas[comandaSelecionada]?.itens || [];
+    const total = [...document.querySelectorAll('#pag-itens input:checked')].reduce((s, c) => s + totalItemCentavos(itens[Number(c.dataset.indice)]), 0);
+    document.getElementById('pag-selecionados').textContent = formatarMoeda(total / 100);
+}
+
+function preencherContasPagamento() {
+    const select = document.getElementById('pag-conta');
+    const ativas = contasCrediario.filter(c => c.ativo);
+    const grupo = (titulo, lista) => lista.length ? `<optgroup label="${titulo}">${lista.map(c => `<option value="${c.id}">${escaparHtml(c.nome)} · ${formatarDocumento(c.documento)}</option>`).join('')}</optgroup>` : '';
+    select.innerHTML = '<option value="">Escolha…</option>' + grupo('Loja', ativas.filter(c => c.tipo === 'empresa')) + grupo('Funcionários', ativas.filter(c => c.tipo === 'funcionario'));
+    document.getElementById('pag-conta-ajuda').hidden = ativas.length > 0;
 }
 
 function dadosPagamento() {
@@ -816,10 +827,6 @@ function valoresPagamento() {
     let erro = dados.erro;
     if (entradas.some(p => !Number.isFinite(p.valor) || p.valor < 0)) erro = 'Informe valores válidos, iguais ou maiores que zero.';
     const pagamentos = entradas.filter(p => p.valor > 0).map(p => ({metodo:p.metodo, valor:centavos(p.valor)}));
-    if (pagamentos.some(p => p.metodo === 'Crediário')) {
-        const lista = document.getElementById('clientes-crediario');
-        if (!lista.children.length) lista.replaceChildren(...clientesCrediario.map(c => Object.assign(document.createElement('option'), {value: c.cliente})));
-    }
     const informado = pagamentos.reduce((s,p) => s + p.valor, 0);
     const dinheiro = pagamentos.find(p => p.metodo === 'Dinheiro')?.valor || 0;
     const troco = Math.max(0, informado - dados.total);
@@ -839,25 +846,24 @@ function atualizarPagamento() {
     document.getElementById('pag-erro').textContent = dados.erro;
     const crediario = dados.pagamentos.some(p => p.metodo === 'Crediário');
     document.getElementById('pag-cliente-box').hidden = !crediario;
-    document.getElementById('pag-cliente').required = crediario;
     document.querySelectorAll('.payment-card').forEach(card => card.classList.toggle('filled', Number(card.querySelector('input').value) > 0));
 }
 
 async function confirmarPagamento() {
     if (!comandaSelecionada) return;
     const dados = valoresPagamento();
-    const cliente = document.getElementById('pag-cliente').value.trim();
+    const conta = Number(document.getElementById('pag-conta').value) || null;
     const crediario = dados.pagamentos.find(p => p.metodo === 'Crediário')?.valor || 0;
     let erro = dados.erro;
     if (!erro && dados.informado < dados.total) erro = 'Valor insuficiente. Complete o saldo nas formas de pagamento.';
-    if (!erro && crediario && !cliente) erro = 'Informe o cliente do crediário.';
+    if (!erro && crediario && !conta) erro = 'Escolha de quem é o crediário.';
     if (erro) { document.getElementById('pag-erro').textContent = erro; return; }
     const botao = document.querySelector('#modal-pagamento button[type=submit]');
     botao.disabled = true;
     const numero = comandaSelecionada;
     try {
         await salvarComandas();
-        const venda = await api('/api/vendas', {method: 'POST', body: {comanda: numero, desconto: dados.desconto, pagamentos: dados.pagamentos, cliente: crediario ? cliente : ''}});
+        const venda = await api('/api/vendas', {method: 'POST', body: {comanda: numero, desconto: dados.desconto, pagamentos: dados.pagamentos, contaCrediario: crediario ? conta : null}});
         comandas[numero] = comandaVazia();
         ultimoSalvo[numero] = JSON.stringify(comandas[numero]);
         fecharModal();
@@ -992,22 +998,85 @@ async function cancelarVenda(id) {
 
 // ---------- CREDIÁRIO ----------
 let clientesCrediario = [];
+let contasCrediario = [];
 async function carregarCrediario() {
-    try { clientesCrediario = await api('/api/crediario'); } catch (e) { avisar(e.message); }
-    document.getElementById('clientes-crediario').replaceChildren(...clientesCrediario.map(c => Object.assign(document.createElement('option'), {value: c.cliente})));
-    if (abaAtiva() === 'crediario') renderizarCrediario();
+    try { [clientesCrediario, contasCrediario] = await Promise.all([api('/api/crediario'), api('/api/crediario/contas')]); } catch (e) { avisar(e.message); }
+    if (abaAtiva() === 'crediario') { renderizarCrediario(); renderizarContas(); }
+}
+
+function formatarDocumento(d) {
+    d = String(d || '').replace(/\D/g, '');
+    if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    return d;
+}
+// Põe pontos e traço enquanto digita.
+function formatarCampoDocumento(campo) {
+    const d = campo.value.replace(/\D/g, '').slice(0, document.getElementById('conta-tipo').value === 'empresa' ? 14 : 11);
+    const mascara = document.getElementById('conta-tipo').value === 'empresa' ? [2, 3, 3, 4, 2] : [3, 3, 3, 2];
+    const separadores = document.getElementById('conta-tipo').value === 'empresa' ? ['.', '.', '/', '-'] : ['.', '.', '-'];
+    let resultado = '', pos = 0;
+    mascara.forEach((tamanho, i) => { const parte = d.slice(pos, pos + tamanho); if (!parte) return; resultado += (i ? separadores[i - 1] : '') + parte; pos += tamanho; });
+    campo.value = resultado;
+}
+function atualizarRotuloDocumento() {
+    const empresa = document.getElementById('conta-tipo').value === 'empresa';
+    document.getElementById('conta-documento-label').textContent = empresa ? 'CNPJ' : 'CPF';
+    const campo = document.getElementById('conta-documento');
+    campo.placeholder = empresa ? '00.000.000/0000-00' : '000.000.000-00';
+    formatarCampoDocumento(campo);
+}
+
+function renderizarContas() {
+    const lista = document.getElementById('contas-lista');
+    if (!lista) return;
+    lista.innerHTML = contasCrediario.map(c => `<li class="${c.ativo ? '' : 'inativa'}">
+        <span><strong>${escaparHtml(c.nome)}</strong><small>${c.tipo === 'empresa' ? 'Loja · CNPJ' : 'Funcionário · CPF'} ${formatarDocumento(c.documento)}${c.ativo ? '' : ' · bloqueado'}</small></span>
+        <button class="btn btn-secondary btn-sm" type="button" onclick="editarConta(${c.id})" aria-label="Editar ${escaparHtml(c.nome)}">Editar</button>
+    </li>`).join('') || '<li class="field-help">Ninguém cadastrado ainda. Cadastre os funcionários e a loja abaixo.</li>';
+}
+function novaConta() {
+    document.getElementById('conta-form').reset();
+    document.getElementById('conta-id').value = '';
+    document.getElementById('conta-form-titulo').textContent = 'Cadastrar';
+    document.getElementById('conta-erro').textContent = '';
+    atualizarRotuloDocumento();
+}
+function editarConta(id) {
+    const c = contasCrediario.find(c => c.id === id); if (!c) return;
+    document.getElementById('conta-id').value = c.id;
+    document.getElementById('conta-tipo').value = c.tipo;
+    document.getElementById('conta-nome').value = c.nome;
+    document.getElementById('conta-documento').value = c.documento;
+    document.getElementById('conta-ativo').checked = c.ativo;
+    document.getElementById('conta-form-titulo').textContent = 'Editar';
+    document.getElementById('conta-erro').textContent = '';
+    atualizarRotuloDocumento();
+    document.getElementById('conta-nome').focus();
+}
+async function salvarConta() {
+    const id = document.getElementById('conta-id').value;
+    try {
+        contasCrediario = await api('/api/crediario/contas' + (id ? '/' + id : ''), {method: id ? 'PUT' : 'POST', body: {
+            nome: document.getElementById('conta-nome').value, tipo: document.getElementById('conta-tipo').value,
+            documento: document.getElementById('conta-documento').value, ativo: document.getElementById('conta-ativo').checked
+        }});
+        avisar('Cadastro salvo.');
+        novaConta();
+        renderizarContas();
+    } catch (e) { document.getElementById('conta-erro').textContent = e.message; }
 }
 
 function renderizarCrediario() {
     const box = document.getElementById('crediario-lista');
     const termo = document.getElementById('crediario-busca').value;
     const total = clientesCrediario.reduce((s, c) => s + centavos(c.saldo), 0) / 100;
-    const lista = normalizarBusca(termo) ? clientesCrediario.filter(c => notaBusca(termo, {nome: c.cliente})) : clientesCrediario;
-    let html = `<div class="cards-resumo"><div class="card-resumo"><span>Total a receber</span><strong>${formatarMoeda(total)}</strong></div><div class="card-resumo"><span>Clientes devendo</span><strong>${clientesCrediario.length}</strong></div></div>`;
+    const lista = normalizarBusca(termo) ? clientesCrediario.filter(c => notaBusca(termo, {nome: c.cliente, codigos: [c.documento]})) : clientesCrediario;
+    let html = `<div class="cards-resumo"><div class="card-resumo"><span>Total a receber</span><strong>${formatarMoeda(total)}</strong></div><div class="card-resumo"><span>Devendo</span><strong>${clientesCrediario.length}</strong></div></div>`;
     if (!clientesCrediario.length) html += '<p class="field-help">Ninguém está devendo. Vendas no crediário aparecem aqui.</p>';
-    else if (!lista.length) html += '<p class="field-help">Nenhum cliente encontrado.</p>';
+    else if (!lista.length) html += '<p class="field-help">Ninguém encontrado.</p>';
     html += lista.map((c, i) => `<details class="painel cliente-crediario" ${lista.length === 1 ? 'open' : ''}>
-        <summary><span class="cliente-nome">${escaparHtml(c.cliente)}</span><span class="cliente-saldo">${formatarMoeda(c.saldo)}</span></summary>
+        <summary><span class="cliente-nome">${escaparHtml(c.cliente)}${c.documento ? `<small>${formatarDocumento(c.documento)}</small>` : ''}</span><span class="cliente-saldo">${formatarMoeda(c.saldo)}</span></summary>
         <div class="table-scroll"><table class="table-items"><thead><tr><th>Compra</th><th>Comanda</th><th class="num">No crediário</th><th class="num">Já pagou</th><th class="num">Falta</th></tr></thead><tbody>
             ${c.vendas.map(v => `<tr><td>${formatarDataHora(v.dataHora)}</td><td>#${v.comanda}</td><td class="num">${formatarMoeda(v.valor)}</td><td class="num">${formatarMoeda(v.pago)}</td><td class="num">${formatarMoeda(v.saldo)}</td></tr>`).join('')}
         </tbody></table></div>
@@ -1027,7 +1096,7 @@ async function receberDoCliente(indice) {
     });
     if (!r) return;
     try {
-        clientesCrediario = (await api('/api/crediario/receber', {method: 'POST', body: {cliente: c.cliente, valor: lerValor(r.valor), metodo: r.metodo}})).clientes;
+        clientesCrediario = (await api('/api/crediario/receber', {method: 'POST', body: {chave: c.chave, valor: lerValor(r.valor), metodo: r.metodo}})).clientes;
         avisar(`Recebido ${formatarMoeda(lerValor(r.valor))} de ${c.cliente}.`);
         renderizarCrediario();
     } catch (e) { avisar(e.message); }
@@ -1501,7 +1570,7 @@ async function carregarProdutos() {
         document.getElementById('produtos-reconectar').hidden = false;
     }
     document.getElementById('produto-salvar').disabled = !produtosConectados;
-    renderizarProdutos(); renderizarAtalhosProdutos();
+    renderizarProdutos();
     if (comandaSelecionada) pesquisarProdutosComanda();
 }
 function renderizarProdutos() {
@@ -1548,7 +1617,7 @@ async function salvarProduto() {
         const index = produtosBase.findIndex(p => p.id === result.id);
         if (index < 0) produtosBase.push(result); else produtosBase[index] = result;
         produtosBase.sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR'));
-        renderizarProdutos(); renderizarAtalhosProdutos(); novoProduto(); avisar('Produto salvo no banco local.');
+        renderizarProdutos(); novoProduto(); avisar('Produto salvo no banco local.');
     } catch(e) { document.getElementById('produto-erro').textContent = e.message; }
     finally { botao.disabled = !produtosConectados; }
 }

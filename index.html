@@ -87,9 +87,26 @@
 
             <!-- ABA: CREDIÁRIO -->
             <section id="view-crediario" class="view-section" aria-labelledby="titulo-crediario"><div class="view-content-box">
-                <h2 id="titulo-crediario">Crediário</h2><p class="field-help">Clientes que compraram para pagar depois. Ao receber, o valor abate primeiro as compras mais antigas e entra no caixa aberto.</p>
-                <div class="filtros"><label>Buscar cliente <input id="crediario-busca" type="search" placeholder="Nome do cliente" oninput="renderizarCrediario()"></label></div>
-                <div id="crediario-lista"></div>
+                <h2 id="titulo-crediario">Crediário</h2><p class="field-help">Só funcionários e a própria loja compram no crediário. Ao receber, o valor abate primeiro as compras mais antigas e entra no caixa aberto.</p>
+                <div class="crediario-layout">
+                    <div>
+                        <div class="filtros"><label>Buscar <input id="crediario-busca" type="search" placeholder="Nome ou CPF" oninput="renderizarCrediario()"></label></div>
+                        <div id="crediario-lista"></div>
+                    </div>
+                    <section class="painel so-admin" aria-labelledby="titulo-contas">
+                        <h3 id="titulo-contas">Quem pode comprar no crediário</h3>
+                        <ul id="contas-lista" class="contas-lista"></ul>
+                        <form id="conta-form" onsubmit="event.preventDefault(); salvarConta()">
+                            <h4 id="conta-form-titulo">Cadastrar</h4><input id="conta-id" type="hidden">
+                            <label for="conta-tipo">Tipo</label><select id="conta-tipo" onchange="atualizarRotuloDocumento()"><option value="funcionario">Funcionário (CPF)</option><option value="empresa">Loja / empresa (CNPJ)</option></select>
+                            <label for="conta-nome">Nome</label><input id="conta-nome" maxlength="120" required>
+                            <label id="conta-documento-label" for="conta-documento">CPF</label><input id="conta-documento" inputmode="numeric" maxlength="18" required placeholder="000.000.000-00" oninput="formatarCampoDocumento(this)">
+                            <label class="checkbox-label"><input id="conta-ativo" type="checkbox" checked> Pode comprar no crediário</label>
+                            <p id="conta-erro" class="form-error" role="alert"></p>
+                            <div class="product-form-actions"><button class="btn btn-primary" type="submit">Salvar</button><button class="btn btn-secondary" type="button" onclick="novaConta()">Limpar</button></div>
+                        </form>
+                    </section>
+                </div>
             </div></section>
 
             <!-- ABA: PRODUTOS (ADMIN) -->
@@ -207,8 +224,6 @@
                 <button class="close-btn" type="button" aria-label="Fechar comanda" onclick="fecharModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="quick-products" id="quick-products-bar" aria-label="Produtos mais usados"></div>
-
                 <div class="add-item-box">
                     <input type="text" id="input-item-modal" placeholder="Buscar produto pelo nome ou código" autocomplete="off" aria-label="Buscar produto na comanda" role="combobox" aria-expanded="false" aria-controls="busca-produtos-resultados" aria-autocomplete="list" oninput="pesquisarProdutosComanda()">
                     <button class="btn btn-primary" type="button" onclick="adicionarItemPorPesquisa()">+ Adicionar</button>
@@ -265,8 +280,15 @@
 
     <!-- MODAL: PAGAMENTO -->
     <div class="modal-overlay" id="modal-pagamento" role="dialog" aria-modal="true" aria-labelledby="titulo-pagamento">
-        <div class="modal-container modal-md">
+        <div class="modal-container modal-pagamento">
             <div class="modal-header"><h2 id="titulo-pagamento">Pagamento</h2><button class="close-btn" type="button" aria-label="Fechar pagamento" onclick="fecharJanela('modal-pagamento')">&times;</button></div>
+            <div class="pagamento-layout">
+            <section class="pagamento-itens" aria-labelledby="titulo-itens-pagamento">
+                <h3 id="titulo-itens-pagamento">Itens da comanda</h3>
+                <p class="field-help">Marque os itens de uma pessoa para ver quanto ela paga.</p>
+                <ul id="pag-itens" class="pag-itens"></ul>
+                <div class="pag-selecionados" role="status"><span>Marcados</span><strong id="pag-selecionados">R$ 0,00</strong></div>
+            </section>
             <form class="modal-body" onsubmit="event.preventDefault(); confirmarPagamento()">
                 <div class="summary-row"><span>Subtotal</span><strong id="pag-subtotal"></strong></div>
                 <div class="summary-row"><span>Adiantamento</span><span id="pag-adiantamento"></span></div>
@@ -281,12 +303,13 @@
                     <label class="payment-card" for="pag-valor-4"><span>Crediário</span><span class="payment-value"><span aria-hidden="true">R$</span><input id="pag-valor-4" data-metodo="Crediário" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></span></label>
                     <label class="payment-card" for="pag-valor-5"><span>Voucher</span><span class="payment-value"><span aria-hidden="true">R$</span><input id="pag-valor-5" data-metodo="Voucher" type="number" min="0" step="0.01" placeholder="0,00" oninput="atualizarPagamento()"></span></label>
                 </div>
-                <div id="pag-cliente-box" hidden><label for="pag-cliente">Cliente do crediário</label><input id="pag-cliente" type="text" maxlength="120" placeholder="Nome do cliente" list="clientes-crediario"><datalist id="clientes-crediario"></datalist></div>
+                <div id="pag-cliente-box" hidden><label for="pag-conta">Crediário de quem?</label><select id="pag-conta"></select><p id="pag-conta-ajuda" class="field-help" hidden>Nenhum funcionário cadastrado. O administrador cadastra na aba Crediário.</p></div>
                 <div class="payment-progress"><div class="summary-row"><span>Valor informado</span><strong id="pag-informado"></strong></div><div class="summary-row"><span>Falta pagar</span><strong id="pag-restante"></strong></div><div class="summary-row"><span>Troco em dinheiro</span><strong id="pag-troco"></strong></div></div>
                 <div class="summary-row total payment-total"><span>Total a pagar</span><strong id="pag-total"></strong></div>
                 <p id="pag-erro" class="form-error" role="alert"></p>
                 <button class="btn btn-pay full-width" type="submit">Confirmar pagamento</button>
             </form>
+            </div>
         </div>
     </div>
 

@@ -130,7 +130,15 @@ CREATE TABLE IF NOT EXISTS registro_comandas (
  descricao TEXT NOT NULL,
  enviado_cozinha INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS registro_comandas_data ON registro_comandas(data_hora);`);
+CREATE INDEX IF NOT EXISTS registro_comandas_data ON registro_comandas(data_hora);
+CREATE TABLE IF NOT EXISTS contas_crediario (
+ id INTEGER PRIMARY KEY,
+ nome TEXT NOT NULL,
+ tipo TEXT NOT NULL CHECK(tipo IN ('funcionario','empresa')),
+ documento TEXT NOT NULL UNIQUE,
+ ativo INTEGER NOT NULL DEFAULT 1 CHECK(ativo IN (0,1)),
+ criado_em TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);`);
  // Campos adicionados depois da primeira versão: bancos antigos ganham as colunas sem perder dados.
  const colunas = tabela => db.prepare(`PRAGMA table_info(${tabela})`).all().map(c => c.name);
  if (!colunas('produtos').includes('adicional')) {
@@ -140,6 +148,7 @@ UPDATE produtos SET adicional=1, categoria=CASE WHEN categoria='' THEN 'Adiciona
 UPDATE produtos SET aceita_adicionais=1, categoria=CASE WHEN categoria='' THEN 'Açaí' ELSE categoria END WHERE codigo IN ('101','102');`);
  }
  if (!colunas('venda_itens').includes('adicional_de')) db.exec('ALTER TABLE venda_itens ADD COLUMN adicional_de INTEGER REFERENCES venda_itens(id)');
+ if (!colunas('vendas').includes('conta_crediario_id')) db.exec('ALTER TABLE vendas ADD COLUMN conta_crediario_id INTEGER REFERENCES contas_crediario(id)');
  // Inserção única dos produtos que já existiam no site.
  if (!db.prepare("SELECT 1 FROM configuracao WHERE chave='produtos_iniciais'").get()) {
   const inserir = db.prepare("INSERT OR IGNORE INTO produtos (codigo,nome,preco_centavos,unidade,requer_cozinha,categoria,adicional,aceita_adicionais) VALUES (?,?,?,'UN',?,?,?,?)");
