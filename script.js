@@ -433,13 +433,69 @@ function inserirProdutoDireto(prod) {
 function normalizarBusca(valor) {
     return String(valor || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR').trim();
 }
-function encontrarProdutos(termo) {
+// ---------- BUSCA INTELIGENTE ----------
+// Cada palavra digitada precisa combinar com alguma palavra do produto, em qualquer ordem,
+// aceitando começo de palavra ("panq") e erros de digitação ("panquica", "frnago").
+const PALAVRAS_IGNORADAS = new Set(['de', 'da', 'do', 'das', 'dos', 'com', 'e', 'a', 'o', 'em', 'no', 'na', 'c']);
+function palavrasBusca(texto) {
+    return normalizarBusca(texto).replace(/[^a-z0-9]+/g, ' ').split(' ').filter(p => p && !PALAVRAS_IGNORADAS.has(p));
+}
+
+// Distância entre duas palavras: quantas letras trocar, tirar, pôr ou inverter de lugar.
+function distanciaPalavras(a, b) {
+    const d = Array.from({length: a.length + 1}, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+            const custo = a[i - 1] === b[j - 1] ? 0 : 1;
+            d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + custo);
+            if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+        }
+    }
+    return d[a.length][b.length];
+}
+
+function notaPalavra(busca, palavra) {
+    if (palavra === busca) return 3;
+    if (palavra.startsWith(busca)) return 2.5;
+    if (busca.length >= 3 && palavra.includes(busca)) return 2;
+    const tolerancia = busca.length <= 3 ? 0 : busca.length <= 5 ? 1 : 2;
+    if (!tolerancia || /^\d+$/.test(busca)) return 0;
+    // Erro na palavra inteira ou no começo dela (quando ainda está digitando).
+    const erros = Math.min(distanciaPalavras(busca, palavra), distanciaPalavras(busca, palavra.slice(0, busca.length)));
+    return erros <= tolerancia ? 1.5 - erros * 0.25 : 0;
+}
+
+// Devolve a nota do item para a busca (0 = não combina). Código e código de barras exatos vêm primeiro.
+function notaBusca(termo, {nome, extras = [], codigos = []}) {
     const busca = normalizarBusca(termo);
-    if (!busca) return [];
-    return produtosBase.filter(p => p.ativo && [p.codigo,p.codigoBarras,p.nome].some(v => normalizarBusca(v).includes(busca))).sort((a,b) => {
-        const exato = p => [p.codigo,p.codigoBarras,p.nome].some(v => normalizarBusca(v) === busca);
-        return Number(exato(b)) - Number(exato(a)) || a.nome.localeCompare(b.nome,'pt-BR');
-    });
+    if (!busca) return 0;
+    if (codigos.some(c => c && normalizarBusca(c) === busca)) return 1000;
+    const palavrasItem = palavrasBusca([nome, ...extras].join(' '));
+    const codigosItem = codigos.filter(Boolean).map(normalizarBusca);
+    const palavrasTermo = palavrasBusca(busca);
+    if (!palavrasTermo.length) return normalizarBusca(nome).includes(busca) ? 1 : 0;
+    let total = 0;
+    for (const p of palavrasTermo) {
+        const melhor = Math.max(0, ...palavrasItem.map(w => notaPalavra(p, w)), ...codigosItem.map(c => c.startsWith(p) ? 2 : 0));
+        if (!melhor) return 0;
+        total += melhor;
+    }
+    if (normalizarBusca(nome) === busca) total += 50;
+    else if (palavrasBusca(nome)[0]?.startsWith(palavrasTermo[0])) total += 1;
+    return total;
+}
+
+function buscarInteligente(lista, termo, campos) {
+    return lista.map(item => ({item, nota: notaBusca(termo, campos(item))}))
+        .filter(r => r.nota > 0)
+        .sort((a, b) => b.nota - a.nota || campos(a.item).nome.localeCompare(campos(b.item).nome, 'pt-BR'))
+        .map(r => r.item);
+}
+
+const camposProduto = p => ({nome: p.nome, extras: [p.categoria], codigos: [p.codigo, p.codigoBarras]});
+function encontrarProdutos(termo) {
+    return buscarInteligente(produtosBase.filter(p => p.ativo), termo, camposProduto);
 }
 function limparBuscaComanda() {
     document.getElementById('input-item-modal').value = '';
@@ -458,30 +514,45 @@ function pesquisarProdutosComanda() {
     const status = document.getElementById('busca-produtos-status');
     container.replaceChildren();
     if (!normalizarBusca(termo)) { container.hidden = true; status.hidden = true; return; }
-    const encontrados = encontrarProdutos(termo);
-    container.hidden = encontrados.length === 0;
+    resultadosBusca = encontrarProdutos(termo).slice(0, 30);
+    indiceBusca = 0;
+    container.hidden = resultadosBusca.length === 0;
     status.hidden = false;
-    status.textContent = !produtosConectados ? 'Conecte ao servidor local para pesquisar os produtos.' : encontrados.length ? encontrados.length + ' produto(s) encontrado(s). Selecione o produto para adicionar.' : 'Nenhum produto disponível encontrado para esta busca.';
-    encontrados.forEach(prod => {
-        const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'search-result';
+    status.textContent = !produtosConectados ? 'Conecte ao servidor local para pesquisar os produtos.' : resultadosBusca.length ? 'Use ↑ ↓ para escolher e Enter para adicionar.' : 'Nenhum produto encontrado. Tente outra palavra ou o código.';
+    resultadosBusca.forEach((prod, i) => {
+        const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'search-result'; btn.id = 'resultado-busca-' + i;
+        btn.setAttribute('role', 'option');
         const nome = document.createElement('strong'); nome.textContent = prod.nome;
         const codigo = document.createElement('span'); codigo.textContent = 'Código ' + prod.codigo;
         const preco = document.createElement('span'); preco.textContent = formatarMoeda(prod.preco) + ' / ' + prod.unidade.toLowerCase();
         btn.append(nome,codigo,preco); btn.onclick = () => selecionarProdutoBusca(prod); container.append(btn);
     });
+    destacarResultadoBusca();
 }
+
+let resultadosBusca = [];
+let indiceBusca = 0;
+function destacarResultadoBusca() {
+    document.querySelectorAll('#busca-produtos-resultados .search-result').forEach((btn, i) => btn.classList.toggle('ativo', i === indiceBusca));
+    const ativo = document.getElementById('resultado-busca-' + indiceBusca);
+    document.getElementById('input-item-modal').setAttribute('aria-activedescendant', ativo ? ativo.id : '');
+    ativo?.scrollIntoView({block: 'nearest'});
+}
+function moverResultadoBusca(passo) {
+    if (!resultadosBusca.length) return;
+    indiceBusca = (indiceBusca + passo + resultadosBusca.length) % resultadosBusca.length;
+    destacarResultadoBusca();
+}
+
+// Enter adiciona o produto destacado (o mais provável, a não ser que tenha mudado com as setas).
 function adicionarItemPorPesquisa() {
     if (!comandaSelecionada) return;
-    const termo = normalizarBusca(document.getElementById('input-item-modal').value);
-    if (!termo) return;
+    const termo = document.getElementById('input-item-modal').value;
+    if (!normalizarBusca(termo)) return;
     const encontrados = encontrarProdutos(termo);
-    const exatos = encontrados.filter(p => [p.codigo,p.codigoBarras,p.nome].some(v => normalizarBusca(v) === termo));
-    if (exatos.length === 1) selecionarProdutoBusca(exatos[0]);
-    else if (encontrados.length === 1) selecionarProdutoBusca(encontrados[0]);
-    else {
-        pesquisarProdutosComanda();
-        if (encontrados.length > 1) document.getElementById('busca-produtos-status').textContent = 'Há mais de um produto. Selecione na lista qual deseja adicionar.';
-    }
+    const escolhido = resultadosBusca[indiceBusca] && encontrados.includes(resultadosBusca[indiceBusca]) ? resultadosBusca[indiceBusca] : encontrados[0];
+    if (escolhido) selecionarProdutoBusca(escolhido);
+    else pesquisarProdutosComanda();
 }
 
 function adicionarObservacao(index) {
@@ -823,9 +894,9 @@ function tabelaRanking(linhas, campo, extras = [], formatar = v => v, numerar = 
 
 function renderizarTabelaProdutos() {
     if (!relatorioAtual) return;
-    const termo = normalizarBusca(document.getElementById('rel-busca-produto')?.value);
+    const termo = document.getElementById('rel-busca-produto')?.value;
     const ranking = relatorioAtual.produtos.map((p, i) => ({...p, posicao: i + 1}))
-        .filter(p => !termo || [p.nome, p.codigo, p.categoria].some(v => normalizarBusca(v).includes(termo)));
+        .filter(p => !normalizarBusca(termo) || notaBusca(termo, {nome: p.nome, extras: [p.categoria], codigos: [p.codigo]}) > 0);
     const maior = Math.max(...relatorioAtual.produtos.map(p => p.valor), 0.01);
     const caixa = document.getElementById('rel-produtos');
     if (!ranking.length) { caixa.innerHTML = '<p class="field-help">Nenhum produto encontrado.</p>'; return; }
@@ -895,7 +966,11 @@ document.addEventListener('keydown', event => {
         const janela = ['modal-transferencia', 'modal-pagamento'].find(id => document.getElementById(id).classList.contains('active'));
         if (janela) fecharJanela(janela); else if (comandaSelecionada) fecharModal();
     }
-    if (event.key === 'Enter' && event.target.id === 'input-item-modal') adicionarItemPorPesquisa();
+    if (event.target.id === 'input-item-modal') {
+        if (event.key === 'Enter') { event.preventDefault(); adicionarItemPorPesquisa(); }
+        if (event.key === 'ArrowDown') { event.preventDefault(); moverResultadoBusca(1); }
+        if (event.key === 'ArrowUp') { event.preventDefault(); moverResultadoBusca(-1); }
+    }
 });
 
 init();
@@ -1183,8 +1258,8 @@ async function carregarProdutos() {
     if (comandaSelecionada) pesquisarProdutosComanda();
 }
 function renderizarProdutos() {
-    const termo = normalizarBusca(document.getElementById('produto-busca').value);
-    const produtos = produtosBase.filter(p => [p.nome,p.codigo,p.codigoBarras,p.categoria].some(v => normalizarBusca(v).includes(termo)));
+    const termo = document.getElementById('produto-busca').value;
+    const produtos = normalizarBusca(termo) ? buscarInteligente(produtosBase, termo, camposProduto) : produtosBase;
     const tbody = document.getElementById('produtos-lista'); tbody.replaceChildren();
     if (!produtos.length) { const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 6; td.textContent = produtosConectados ? 'Nenhum produto encontrado.' : 'Conecte ao servidor para consultar os produtos.'; tr.append(td); tbody.append(tr); }
     produtos.forEach(p => {

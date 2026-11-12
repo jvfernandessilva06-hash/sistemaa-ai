@@ -212,6 +212,7 @@ form .checkbox-label { display:flex; align-items:center; gap:8px; font-weight:40
 .search-results { display:flex; flex-direction:column; gap:4px; max-height:240px; overflow-y:auto; margin:-4px 0 12px; border:1px solid var(--line); border-radius:8px; padding:6px; }
 .search-result { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:16px; align-items:center; text-align:left; border:0; border-radius:6px; background:white; color:var(--ink); padding:12px; cursor:pointer; }
 .search-result:hover, .search-result:focus-visible { background:#f0e6f5; }
+.search-result.ativo { background:#e7d8ef; box-shadow:inset 3px 0 0 var(--accent); }
 .search-result span { color:var(--muted); font-size:12px; }
 #busca-produtos-status { margin:0 0 16px; }
 @media(max-width:600px) { .search-result { grid-template-columns:minmax(0,1fr) auto; gap:6px; } .search-result strong { grid-column:1 / -1; } }
