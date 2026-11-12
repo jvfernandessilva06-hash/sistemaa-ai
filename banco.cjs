@@ -91,7 +91,17 @@ CREATE TABLE IF NOT EXISTS venda_pagamentos (
  metodo TEXT NOT NULL,
  valor_centavos INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS venda_pagamentos_venda ON venda_pagamentos(venda_id);`);
+CREATE INDEX IF NOT EXISTS venda_pagamentos_venda ON venda_pagamentos(venda_id);
+CREATE TABLE IF NOT EXISTS fila_impressao (
+ id INTEGER PRIMARY KEY,
+ destino TEXT NOT NULL,
+ documento TEXT NOT NULL,
+ descricao TEXT NOT NULL DEFAULT '',
+ criado_em TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+ tentativas INTEGER NOT NULL DEFAULT 0,
+ ultimo_erro TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'pendente' CHECK(status IN ('pendente','impresso','falhou','descartado'))
+);`);
  // Inserção única dos produtos que já existiam no site.
  if (!db.prepare("SELECT 1 FROM configuracao WHERE chave='produtos_iniciais'").get()) {
   const inserir = db.prepare('INSERT OR IGNORE INTO produtos (codigo,nome,preco_centavos,unidade,requer_cozinha) VALUES (?,?,?,?,?)');

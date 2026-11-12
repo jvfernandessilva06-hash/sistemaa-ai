@@ -12,7 +12,7 @@ const port = 3137;
 const url = `http://localhost:${port}`;
 let server;
 async function start() {
- server = spawn(process.execPath,['server.cjs'],{cwd:__dirname,env:{...process.env,PORT:String(port),PRODUCTS_DB:database},stdio:['ignore','pipe','pipe']});
+ server = spawn(process.execPath,['server.cjs'],{cwd:__dirname,env:{...process.env,PORT:String(port),PRODUCTS_DB:database,PRINT_RETRY_MS:'300',PRINTER_SCAN_TARGETS:'127.0.0.1',PRINTER_SCAN_PORT:'9199'},stdio:['ignore','pipe','pipe']});
  await new Promise((resolve,reject)=>{ const timer=setTimeout(()=>reject(new Error('Servidor não iniciou')),10000); server.stdout.on('data',d=>{if(d.toString().includes('Sistema disponível')){clearTimeout(timer);resolve();}}); server.once('exit',code=>{clearTimeout(timer);reject(new Error('Servidor encerrou: '+code));}); });
 }
 async function stop(){if(server && server.exitCode===null){const ended=once(server,'exit');server.kill();await ended;}}
@@ -106,8 +106,9 @@ function cliente() {
 
  // Impressão: uma impressora de rede falsa recebe os comandos ESC/POS.
  const recebido = [];
- const impressora = net.createServer(s => { const partes = []; s.on('data', d => partes.push(d)); s.on('end', () => recebido.push(Buffer.concat(partes))); });
- await new Promise(r => impressora.listen(9199, '127.0.0.1', r));
+ // A busca na rede também conecta na porta sem mandar nada: essas conexões vazias são ignoradas.
+ const ligarImpressora = () => new Promise(r => { const s = net.createServer(c => { const partes = []; c.on('data', d => partes.push(d)); c.on('end', () => { if (partes.length) recebido.push(Buffer.concat(partes)); }); c.on('error', () => {}); }); s.listen(9199, '127.0.0.1', () => r(s)); });
+ let impressora = await ligarImpressora();
  const config = (await atendente('/api/impressoras')).body;
  assert.equal(config.cozinha.modo, 'navegador');
  const documento = [{t:'texto',v:'COMANDA 07',g:true,b:true,a:'c'},{t:'linha'},{t:'texto',v:'2x Açaí 500ml'},{t:'par',e:'Total',d:'R$ 36,00'}];
@@ -122,8 +123,29 @@ function cliente() {
  assert.ok(bytes.includes(Buffer.from([0x41, 0x87, 0x61, 0xa1])), 'Açaí em CP850');
  assert.equal(bytes.filter((b, i) => b === 0x1d && bytes[i + 1] === 0x56).length, 2, 'duas cópias, cada uma com corte');
  assert.ok(bytes.includes(Buffer.from('Total' + ' '.repeat(48 - 5 - 8) + 'R$ 36,00')), 'par alinhado em 48 colunas');
- impressora.close();
- assert.equal((await atendente('/api/imprimir','POST',{destino:'cozinha',documento})).status, 502, 'impressora desligada');
+ assert.ok(bytes.includes(Buffer.from([0x1d, 0x21, 0x11])), 'letra grande: nível 1 sai em tamanho 2');
+ assert.deepEqual((await admin('/api/impressoras/procurar')).body.impressoras, ['127.0.0.1:9199'], 'acha a impressora na rede');
+ assert.equal((await atendente('/api/impressoras/procurar')).status, 403);
+
+ // Impressora desligada: o teste falha na hora, mas o pedido da cozinha espera na fila e sai quando ela volta.
+ await new Promise(r => impressora.close(r));
+ assert.equal((await atendente('/api/imprimir','POST',{destino:'cozinha',documento,fila:false})).status, 502, 'teste de impressão não entra na fila');
+ const naFila = await atendente('/api/imprimir','POST',{destino:'cozinha',documento,descricao:'Pedido comanda 07'});
+ assert.equal(naFila.status, 202); assert.equal(naFila.body.naFila, true);
+ assert.equal((await atendente('/api/imprimir','POST',{destino:'cozinha',documento:[{t:'texto',v:'SEGUNDO'}],descricao:'Pedido comanda 08'})).status, 202, 'entra atrás do primeiro');
+ assert.equal((await atendente('/api/impressoras/fila')).body.pendentes, 2);
+ const antes = recebido.length;
+ impressora = await ligarImpressora();
+ for (let i = 0; i < 40 && (await atendente('/api/impressoras/fila')).body.pendentes; i++) await new Promise(r => setTimeout(r, 100));
+ await new Promise(r => setTimeout(r, 200));
+ assert.equal((await atendente('/api/impressoras/fila')).body.pendentes, 0, 'fila esvaziou sozinha');
+ assert.equal(recebido.length, antes + 2);
+ assert.ok(recebido[antes].includes(Buffer.from('COMANDA 07')) && recebido[antes + 1].includes(Buffer.from('SEGUNDO')), 'saíram na ordem');
+ await new Promise(r => impressora.close(r));
+ const descartar = await atendente('/api/imprimir','POST',{destino:'cozinha',documento});
+ assert.equal(descartar.status, 202);
+ const id = (await atendente('/api/impressoras/fila')).body.itens[0].id;
+ assert.equal((await atendente(`/api/impressoras/fila/${id}/descartar`,'POST',{})).body.pendentes, 0);
 
  assert.equal((await admin(`/api/usuarios/${ana.body.id}`,'PUT',{nome:'Ana',perfil:'atendente',ativo:false})).status, 200);
  assert.equal((await atendente('/api/produtos')).status, 401);

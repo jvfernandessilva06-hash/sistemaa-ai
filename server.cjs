@@ -337,12 +337,14 @@ function relatorio(ctx) {
 // ---------- IMPRESSORAS ----------
 // Cada destino (cozinha e caixa) pode imprimir pela janela do navegador, por uma impressora de rede (porta 9100)
 // ou por uma impressora USB compartilhada no Windows. Nos dois últimos casos o servidor envia comandos ESC/POS.
-const IMPRESSORA_PADRAO = {modo:'navegador', endereco:'', colunas:48, acentos:'remover', copias:1};
-const CONFIG_IMPRESSORAS_PADRAO = {cozinha:{...IMPRESSORA_PADRAO}, caixa:{...IMPRESSORA_PADRAO}, cabecalho:'Delícias Açaí\nPalmas - TO', rodape:'Obrigado pela preferência!', comprovante:'perguntar'};
+const IMPRESSORA_PADRAO = {modo:'navegador', endereco:'', colunas:48, acentos:'remover', copias:1, letra:'normal'};
+const CONFIG_IMPRESSORAS_PADRAO = {cozinha:{...IMPRESSORA_PADRAO, letra:'grande'}, caixa:{...IMPRESSORA_PADRAO}, cabecalho:'Delícias Açaí\nPalmas - TO', rodape:'Obrigado pela preferência!', comprovante:'perguntar'};
+// Quanto a letra cresce: um bloco de nível g sai com tamanho g + aumento (mínimo 1x, máximo 8x).
+const AUMENTO_LETRA = {normal:0, grande:1, extra:2};
 function lerConfigImpressoras() {
  const row = db.prepare("SELECT valor FROM configuracao WHERE chave='impressoras'").get();
  const salvo = row ? JSON.parse(row.valor) : {};
- return {...CONFIG_IMPRESSORAS_PADRAO, ...salvo, cozinha:{...IMPRESSORA_PADRAO, ...salvo.cozinha}, caixa:{...IMPRESSORA_PADRAO, ...salvo.caixa}};
+ return {...CONFIG_IMPRESSORAS_PADRAO, ...salvo, cozinha:{...CONFIG_IMPRESSORAS_PADRAO.cozinha, ...salvo.cozinha}, caixa:{...CONFIG_IMPRESSORAS_PADRAO.caixa, ...salvo.caixa}};
 }
 function validarImpressora(i, nome) {
  if (!i || typeof i !== 'object') falha(400,`Configuração da impressora ${nome} inválida.`);
@@ -353,7 +355,8 @@ function validarImpressora(i, nome) {
  if (![32, 42, 48].includes(i.colunas)) falha(400,'Escolha a largura do papel.');
  if (!['remover','cp850'].includes(i.acentos)) falha(400,'Escolha como imprimir os acentos.');
  if (!Number.isInteger(i.copias) || i.copias < 1 || i.copias > 3) falha(400,'O número de cópias deve ser de 1 a 3.');
- return {modo:i.modo, endereco, colunas:i.colunas, acentos:i.acentos, copias:i.copias};
+ if (!Object.hasOwn(AUMENTO_LETRA, i.letra)) falha(400,'Escolha o tamanho da letra.');
+ return {modo:i.modo, endereco, colunas:i.colunas, acentos:i.acentos, copias:i.copias, letra:i.letra};
 }
 function salvarConfigImpressoras(ctx) {
  const b = ctx.body;
@@ -384,20 +387,23 @@ function quebrar(texto, largura) {
  }
  return linhas;
 }
-// O documento é uma lista de blocos montada pela tela: {t:'texto'|'par'|'linha', v, e, d, b (negrito), g (grande), a ('c'|'d')}.
+// O documento é uma lista de blocos montada pela tela: {t:'texto'|'par'|'linha', v, e, d, b (negrito), g (nível de tamanho 0 a 3), a ('c'|'d')}.
 function validarDocumento(doc) {
  if (!Array.isArray(doc) || !doc.length || doc.length > 400) falha(400,'Nada para imprimir.');
  return doc.map(b => {
   if (!b || !['texto','par','linha'].includes(b.t)) falha(400,'Conteúdo de impressão inválido.');
-  return {t:b.t, v:texto(b.v, 500), e:texto(b.e, 200), d:texto(b.d, 60), b:b.b === true, g:b.g === true, a:['c','d'].includes(b.a) ? b.a : 'e'};
+  const g = b.g === true ? 1 : Number.isInteger(b.g) && b.g >= 0 && b.g <= 3 ? b.g : 0;
+  return {t:b.t, v:texto(b.v, 500), e:texto(b.e, 200), d:texto(b.d, 60), b:b.b === true, g, a:['c','d'].includes(b.a) ? b.a : 'e'};
  });
 }
+function tamanhoLetra(nivel, cfg) { return Math.min(8, Math.max(1, nivel + (AUMENTO_LETRA[cfg.letra] ?? 0))); }
 function escpos(doc, cfg) {
  const partes = [Buffer.from([0x1b, 0x40])];
  if (cfg.acentos === 'cp850') partes.push(Buffer.from([0x1b, 0x74, 2]));
  for (const b of doc) {
-  const largura = b.g ? Math.floor(cfg.colunas / 2) : cfg.colunas;
-  partes.push(Buffer.from([0x1b, 0x61, b.a === 'c' ? 1 : b.a === 'd' ? 2 : 0, 0x1b, 0x45, b.b ? 1 : 0, 0x1d, 0x21, b.g ? 0x11 : 0]));
+  const tamanho = tamanhoLetra(b.g, cfg);
+  const largura = Math.max(1, Math.floor(cfg.colunas / tamanho));
+  partes.push(Buffer.from([0x1b, 0x61, b.a === 'c' ? 1 : b.a === 'd' ? 2 : 0, 0x1b, 0x45, b.b ? 1 : 0, 0x1d, 0x21, ((tamanho - 1) << 4) | (tamanho - 1)]));
   let linhas;
   if (b.t === 'linha') linhas = ['-'.repeat(largura)];
   else if (b.t === 'par') { const esquerda = b.e.slice(0, Math.max(0, largura - b.d.length - 1)); linhas = [esquerda + ' '.repeat(largura - esquerda.length - b.d.length) + b.d]; }
@@ -414,7 +420,7 @@ function enviarRede(endereco, dados) {
   const socket = net.createConnection({host, port:Number(porta)});
   socket.setTimeout(5000, () => socket.destroy(new Error('a impressora não respondeu')));
   socket.on('connect', () => socket.end(dados));
-  socket.on('error', reject);
+  socket.on('error', e => reject(new Error({ECONNREFUSED:'a impressora recusou a conexão: desligada ou IP errado', EHOSTUNREACH:'a impressora não está na rede', ENETUNREACH:'este computador está sem rede', ENOTFOUND:'endereço da impressora não encontrado', ETIMEDOUT:'a impressora não respondeu'}[e.code] || e.message)));
   socket.on('close', erro => { if (!erro) resolve(); });
  });
 }
@@ -429,15 +435,97 @@ function enviarWindows(compartilhamento, dados) {
   });
  });
 }
+async function enviarParaImpressora(destino, documento) {
+ const cfg = lerConfigImpressoras()[destino];
+ if (cfg.modo === 'navegador') throw new Error('a impressora agora está configurada para o navegador');
+ const dados = escpos(documento, cfg);
+ await (cfg.modo === 'rede' ? enviarRede(cfg.endereco, dados) : enviarWindows(cfg.endereco, dados));
+}
 async function imprimir(ctx) {
  const destino = ctx.body.destino;
  if (!['cozinha','caixa'].includes(destino)) falha(400,'Destino de impressão inválido.');
- const cfg = lerConfigImpressoras()[destino];
- if (cfg.modo === 'navegador') falha(409,'Esta impressora está configurada para imprimir pelo navegador.');
- const dados = escpos(validarDocumento(ctx.body.documento), cfg);
- try { await (cfg.modo === 'rede' ? enviarRede(cfg.endereco, dados) : enviarWindows(cfg.endereco, dados)); }
- catch(e) { falha(502, `Não foi possível imprimir (${e.message}). Confira se a impressora está ligada e configurada.`); }
- return {ok:true};
+ if (lerConfigImpressoras()[destino].modo === 'navegador') falha(409,'Esta impressora está configurada para imprimir pelo navegador.');
+ const documento = validarDocumento(ctx.body.documento);
+ // Só pedidos da cozinha esperam na fila: um comprovante impresso muito depois não serve mais para o cliente.
+ const usarFila = destino === 'cozinha' && ctx.body.fila !== false;
+ const pendentes = db.prepare("SELECT COUNT(*) AS n FROM fila_impressao WHERE destino=? AND status='pendente'").get(destino).n;
+ let erro = '';
+ if (!usarFila || !pendentes) {
+  try { await enviarParaImpressora(destino, documento); return {impresso:true}; }
+  catch(e) { erro = e.message; }
+  if (!usarFila) falha(502, `Não foi possível imprimir (${erro}). Confira se a impressora está ligada e configurada.`);
+ }
+ // Se já há pedidos esperando, este entra atrás deles para a cozinha receber na ordem certa.
+ db.prepare('INSERT INTO fila_impressao (destino,documento,descricao,tentativas,ultimo_erro) VALUES (?,?,?,?,?)').run(destino, JSON.stringify(documento), texto(ctx.body.descricao, 80), erro ? 1 : 0, erro);
+ ctx.status = 202;
+ return {impresso:false, naFila:true, mensagem:'A impressora da cozinha não respondeu. O pedido fica guardado e sai sozinho assim que ela voltar.'};
+}
+
+// ---------- FILA DE IMPRESSÃO ----------
+const MINUTOS_NA_FILA = 30;
+let processandoFila = false;
+async function processarFila() {
+ if (processandoFila) return;
+ processandoFila = true;
+ try {
+  // Pedido que esperou demais provavelmente já foi feito de outro jeito: para de tentar e avisa na tela.
+  db.prepare(`UPDATE fila_impressao SET status='falhou' WHERE status='pendente' AND criado_em < datetime('now','localtime','-${MINUTOS_NA_FILA} minutes')`).run();
+  for (const job of db.prepare("SELECT * FROM fila_impressao WHERE status='pendente' ORDER BY id").all()) {
+   try {
+    await enviarParaImpressora(job.destino, JSON.parse(job.documento));
+    db.prepare("UPDATE fila_impressao SET status='impresso', tentativas=tentativas+1 WHERE id=?").run(job.id);
+   } catch(e) {
+    db.prepare('UPDATE fila_impressao SET tentativas=tentativas+1, ultimo_erro=? WHERE id=?').run(e.message, job.id);
+    break; // mantém a ordem: os próximos esperam este sair
+   }
+  }
+ } catch(e) { console.error(e); }
+ finally { processandoFila = false; }
+}
+setInterval(processarFila, Number(process.env.PRINT_RETRY_MS || 10000)).unref();
+function filaPublica() {
+ const itens = db.prepare("SELECT * FROM fila_impressao WHERE status IN ('pendente','falhou') ORDER BY id").all()
+  .map(j => ({id:j.id, destino:j.destino, descricao:j.descricao, criadoEm:j.criado_em, tentativas:j.tentativas, erro:j.ultimo_erro, status:j.status}));
+ return {pendentes:itens.filter(i => i.status === 'pendente').length, falharam:itens.filter(i => i.status === 'falhou').length, itens};
+}
+function acaoFila(ctx) {
+ const id = Number(ctx.params[0]);
+ const novoStatus = ctx.params[1] === 'reenviar' ? 'pendente' : 'descartado';
+ const r = novoStatus === 'pendente'
+  ? db.prepare("UPDATE fila_impressao SET status='pendente', criado_em=datetime('now','localtime') WHERE id=? AND status IN ('pendente','falhou')").run(id)
+  : db.prepare("UPDATE fila_impressao SET status='descartado' WHERE id=? AND status IN ('pendente','falhou')").run(id);
+ if (!r.changes) falha(404,'Pedido não encontrado na fila.');
+ if (novoStatus === 'pendente') processarFila();
+ return filaPublica();
+}
+
+// ---------- PROCURAR IMPRESSORA NA REDE ----------
+// Testa a porta 9100 (padrão das impressoras de rede) em todos os endereços da rede local deste computador.
+function redesLocais() {
+ const bases = new Set();
+ for (const lista of Object.values(os.networkInterfaces())) for (const i of lista || []) if (i.family === 'IPv4' && !i.internal) bases.add(i.address.split('.').slice(0, 3).join('.'));
+ return [...bases].slice(0, 4);
+}
+function portaAberta(host, porta, ms) {
+ return new Promise(resolve => {
+  const socket = net.createConnection({host, port:porta});
+  const fim = ok => { socket.destroy(); resolve(ok); };
+  socket.setTimeout(ms, () => fim(false));
+  socket.on('connect', () => fim(true));
+  socket.on('error', () => fim(false));
+ });
+}
+async function procurarImpressoras() {
+ const porta = Number(process.env.PRINTER_SCAN_PORT || 9100);
+ const redes = redesLocais();
+ const alvos = process.env.PRINTER_SCAN_TARGETS ? process.env.PRINTER_SCAN_TARGETS.split(',') : redes.flatMap(base => Array.from({length:254}, (_, i) => `${base}.${i + 1}`));
+ const encontradas = [];
+ for (let i = 0; i < alvos.length; i += 64) {
+  const lote = alvos.slice(i, i + 64);
+  const abertas = await Promise.all(lote.map(ip => portaAberta(ip, porta, 700)));
+  lote.forEach((ip, j) => { if (abertas[j]) encontradas.push(porta === 9100 ? ip : `${ip}:${porta}`); });
+ }
+ return {redes:redes.map(b => b + '.x'), impressoras:encontradas};
 }
 
 // ---------- ROTAS ----------
@@ -465,7 +553,10 @@ const rotas = [
  ['GET', /^\/api\/relatorios$/, 'admin', relatorio],
  ['GET', /^\/api\/impressoras$/, 'logado', lerConfigImpressoras],
  ['PUT', /^\/api\/impressoras$/, 'admin', salvarConfigImpressoras],
- ['POST', /^\/api\/imprimir$/, 'logado', imprimir]
+ ['POST', /^\/api\/imprimir$/, 'logado', imprimir],
+ ['GET', /^\/api\/impressoras\/fila$/, 'logado', filaPublica],
+ ['POST', /^\/api\/impressoras\/fila\/(\d+)\/(reenviar|descartar)$/, 'logado', acaoFila],
+ ['GET', /^\/api\/impressoras\/procurar$/, 'admin', procurarImpressoras]
 ];
 
 function json(res,status,body) { res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}); res.end(JSON.stringify(body)); }

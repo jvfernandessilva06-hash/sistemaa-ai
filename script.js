@@ -116,7 +116,7 @@ async function entrar(u) {
     document.getElementById('usuario-nome').textContent = `${u.nome} · ${u.perfil === 'admin' ? 'Administrador' : 'Atendente'}`;
     mostrarTela('screen-app');
     trocarAba('pdv');
-    await Promise.all([carregarProdutos(), carregarComandas(), carregarCaixa(), carregarVendas(), carregarImpressoras()]);
+    await Promise.all([carregarProdutos(), carregarComandas(), carregarCaixa(), carregarVendas(), carregarImpressoras(), atualizarFila()]);
     if (usuario && !caixaAtual) solicitarAberturaCaixa();
 }
 
@@ -509,13 +509,14 @@ async function imprimirCozinha() {
     const numero = comandaSelecionada;
     const pendentes = comandas[numero].itens.filter(i => i.requerCozinha && !i.impresso);
     if (pendentes.length === 0) return avisar('Não há itens pendentes para enviar à cozinha.');
-    try { await imprimir('cozinha', documentoCozinha(numero, pendentes)); }
+    let resultado;
+    try { resultado = await imprimir('cozinha', documentoCozinha(numero, pendentes), {descricao: `Pedido da comanda ${String(numero).padStart(2, '0')}`}); }
     catch (e) { return avisar(e.message); }
-    // Só marca como impresso depois que a impressão foi aceita.
+    // Só marca como impresso depois que a impressão foi aceita (ou guardada na fila, que imprime sozinha).
     pendentes.forEach(i => i.impresso = true);
     renderizarTudo();
     if (comandaSelecionada === numero) abrirModalComanda(numero);
-    avisar('Pedido enviado para a cozinha.');
+    avisar(resultado?.naFila ? resultado.mensagem : 'Pedido enviado para a cozinha.');
 }
 
 function adiantarValor() {
@@ -940,10 +941,19 @@ async function carregarImpressoras() {
     try { configImpressoras = await api('/api/impressoras'); } catch (e) { avisar(e.message); }
 }
 
-async function imprimir(destino, documento) {
-    const cfg = configImpressoras?.[destino] || {modo: 'navegador', colunas: 48};
-    if (cfg.modo === 'navegador') return imprimirNavegador(documento, cfg);
-    await api('/api/imprimir', {method: 'POST', body: {destino, documento}});
+// Retorna {naFila:true, mensagem} quando a impressora da cozinha não respondeu e o pedido ficou guardado no servidor.
+async function imprimir(destino, documento, extras = {}) {
+    const cfg = configImpressoras?.[destino] || {modo: 'navegador', colunas: 48, letra: 'normal'};
+    if (cfg.modo === 'navegador') { await imprimirNavegador(documento, cfg); return {impresso: true}; }
+    const resultado = await api('/api/imprimir', {method: 'POST', body: {destino, documento, ...extras}});
+    if (resultado.naFila) atualizarFila();
+    return resultado;
+}
+
+const AUMENTO_LETRA = {normal: 0, grande: 1, extra: 2};
+function tamanhoLetra(bloco, cfg) {
+    const nivel = bloco.g === true ? 1 : bloco.g || 0;
+    return Math.min(8, Math.max(1, nivel + (AUMENTO_LETRA[cfg.letra] ?? 0)));
 }
 
 function imprimirNavegador(documento, cfg) {
@@ -957,16 +967,17 @@ function imprimirNavegador(documento, cfg) {
 function htmlImpressao(documento, cfg) {
     const papel = cfg.colunas >= 42 ? 80 : 58;
     const bloco = b => {
-        const classes = [b.b && 'b', b.g && 'g', b.a === 'c' && 'c', b.a === 'd' && 'd'].filter(Boolean).join(' ');
+        const classes = [b.b && 'b', b.a === 'c' && 'c', b.a === 'd' && 'd'].filter(Boolean).join(' ');
+        const estilo = `font-size:${12 * tamanhoLetra(b, cfg)}px`;
         if (b.t === 'linha') return '<div class="linha"></div>';
-        if (b.t === 'par') return `<div class="par ${classes}"><span>${escaparHtml(b.e)}</span><span>${escaparHtml(b.d)}</span></div>`;
-        return `<p class="${classes}">${escaparHtml(b.v)}</p>`;
+        if (b.t === 'par') return `<div class="par ${classes}" style="${estilo}"><span>${escaparHtml(b.e)}</span><span>${escaparHtml(b.d)}</span></div>`;
+        return `<p class="${classes}" style="${estilo}">${escaparHtml(b.v)}</p>`;
     };
     return `<!doctype html><html><head><meta charset="utf-8"><title>Impressão</title><style>
         @page { size: ${papel}mm auto; margin: 0; }
         body { margin: 0; padding: 3mm; width: ${papel - 8}mm; font: 12px/1.35 'Courier New', monospace; color: #000; }
         p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-        .b { font-weight: bold; } .g { font-size: 17px; } .c { text-align: center; } .d { text-align: right; }
+        .b { font-weight: bold; } .c { text-align: center; } .d { text-align: right; }
         .par { display: flex; justify-content: space-between; gap: 8px; } .linha { border-top: 1px dashed #000; margin: 4px 0; }
     </style></head><body><!-- ${Date.now()} -->${documento.map(bloco).join('')}</body></html>`;
 }
@@ -977,10 +988,10 @@ function quantidadeTexto(item) { return item.unidade === 'KG' ? `${Number(item.q
 // A cozinha só precisa saber o que preparar e qual comanda chamar: sem loja, preços ou atendente.
 function documentoCozinha(numero, itens) {
     return [
-        {t: 'texto', v: `COMANDA ${String(numero).padStart(2, '0')}`, b: true, g: true, a: 'c'},
+        {t: 'texto', v: `COMANDA ${String(numero).padStart(2, '0')}`, b: true, g: 2, a: 'c'},
         {t: 'linha'},
         ...itens.flatMap(i => [
-            {t: 'texto', v: `${quantidadeTexto(i)} ${i.nome}`, b: true, g: true},
+            {t: 'texto', v: `${quantidadeTexto(i)} ${i.nome}`, b: true, g: 1},
             ...(i.obs ? [{t: 'texto', v: `>> ${i.obs}`, b: true}] : [])
         ]),
         {t: 'linha'}
@@ -1008,7 +1019,7 @@ function documentoComprovante(venda) {
 }
 
 async function imprimirComprovante(venda) {
-    try { await imprimir('caixa', documentoComprovante(venda)); } catch (e) { avisar(e.message); }
+    try { await imprimir('caixa', documentoComprovante(venda), {fila: false}); } catch (e) { avisar(e.message); }
 }
 
 function reimprimirVenda(id) {
@@ -1025,11 +1036,16 @@ function renderizarImpressoras() {
             <h3>${destino === 'cozinha' ? 'Cozinha' : 'Caixa'}</h3>
             <label for="imp-${destino}-modo">Como a impressora está ligada</label>
             <select id="imp-${destino}-modo" onchange="atualizarCampoEndereco('${destino}')">${Object.entries(MODOS_IMPRESSORA).map(([v, t]) => `<option value="${v}" ${cfg.modo === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
-            <div id="imp-${destino}-endereco-box"><label id="imp-${destino}-endereco-label" for="imp-${destino}-endereco"></label><input id="imp-${destino}-endereco" maxlength="120" value="${escaparHtml(cfg.endereco)}"></div>
+            <div id="imp-${destino}-endereco-box">
+                <label id="imp-${destino}-endereco-label" for="imp-${destino}-endereco"></label>
+                <div class="field-row"><input id="imp-${destino}-endereco" maxlength="120" value="${escaparHtml(cfg.endereco)}"><button class="btn btn-secondary" type="button" id="imp-${destino}-procurar" onclick="procurarImpressoras('${destino}')">Procurar na rede</button></div>
+                <div id="imp-${destino}-encontradas" class="impressoras-encontradas" role="status"></div>
+            </div>
             <div class="product-fields">
-                <div><label for="imp-${destino}-colunas">Papel</label><select id="imp-${destino}-colunas"><option value="48" ${cfg.colunas === 48 ? 'selected' : ''}>80 mm</option><option value="42" ${cfg.colunas === 42 ? 'selected' : ''}>80 mm (fonte maior)</option><option value="32" ${cfg.colunas === 32 ? 'selected' : ''}>58 mm</option></select></div>
+                <div><label for="imp-${destino}-colunas">Papel</label><select id="imp-${destino}-colunas"><option value="48" ${cfg.colunas !== 32 ? 'selected' : ''}>80 mm</option><option value="32" ${cfg.colunas === 32 ? 'selected' : ''}>58 mm</option></select></div>
                 <div><label for="imp-${destino}-copias">Cópias</label><select id="imp-${destino}-copias">${[1, 2, 3].map(n => `<option ${cfg.copias === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
             </div>
+            ${destino === 'cozinha' ? `<label for="imp-cozinha-letra">Tamanho da letra dos itens</label><select id="imp-cozinha-letra">${[['normal', 'Normal'], ['grande', 'Grande (recomendado)'], ['extra', 'Extra grande']].map(([v, t]) => `<option value="${v}" ${cfg.letra === v ? 'selected' : ''}>${t}</option>`).join('')}</select>` : ''}
             <div id="imp-${destino}-acentos-box"><label for="imp-${destino}-acentos">Acentos</label><select id="imp-${destino}-acentos"><option value="remover" ${cfg.acentos === 'remover' ? 'selected' : ''}>Sem acentos (funciona em todas)</option><option value="cp850" ${cfg.acentos === 'cp850' ? 'selected' : ''}>Com acentos (página de código 850)</option></select></div>
             <button class="btn btn-secondary" type="button" style="margin-top:16px;" onclick="testarImpressora('${destino}')">Salvar e imprimir teste</button>`;
         atualizarCampoEndereco(destino);
@@ -1046,6 +1062,69 @@ function atualizarCampoEndereco(destino) {
     document.getElementById(`imp-${destino}-acentos-box`).hidden = modo === 'navegador';
     document.getElementById(`imp-${destino}-endereco-label`).textContent = modo === 'rede' ? 'IP da impressora' : 'Nome do compartilhamento';
     document.getElementById(`imp-${destino}-endereco`).placeholder = modo === 'rede' ? 'Ex.: 192.168.0.50' : 'Ex.: COZINHA';
+    document.getElementById(`imp-${destino}-procurar`).hidden = modo !== 'rede';
+    document.getElementById(`imp-${destino}-encontradas`).replaceChildren();
+}
+
+async function procurarImpressoras(destino) {
+    const botao = document.getElementById(`imp-${destino}-procurar`);
+    const caixa = document.getElementById(`imp-${destino}-encontradas`);
+    botao.disabled = true;
+    caixa.textContent = 'Procurando impressoras na rede… leva alguns segundos.';
+    try {
+        const r = await api('/api/impressoras/procurar');
+        caixa.replaceChildren();
+        if (!r.impressoras.length) {
+            caixa.textContent = 'Nenhuma impressora encontrada. Confira se ela está ligada e no mesmo Wi-Fi deste computador.';
+            return;
+        }
+        const texto = document.createElement('span');
+        texto.textContent = r.impressoras.length === 1 ? 'Encontrada:' : 'Encontradas (clique para usar):';
+        caixa.append(texto);
+        r.impressoras.forEach(ip => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.className = 'btn btn-secondary btn-sm'; b.textContent = ip;
+            b.onclick = () => { document.getElementById(`imp-${destino}-endereco`).value = ip; caixa.textContent = `Usando ${ip}. Clique em "Salvar e imprimir teste" para confirmar.`; };
+            caixa.append(b);
+        });
+        if (r.impressoras.length === 1) document.getElementById(`imp-${destino}-endereco`).value = r.impressoras[0];
+    } catch (e) { caixa.textContent = e.message; }
+    finally { botao.disabled = false; }
+}
+
+// ---------- FILA DE IMPRESSÃO ----------
+let filaAtual = {pendentes: 0, falharam: 0, itens: []};
+async function atualizarFila() {
+    if (!usuario) return;
+    try { filaAtual = await api('/api/impressoras/fila'); } catch { return; }
+    const badge = document.getElementById('fila-badge');
+    const total = filaAtual.pendentes + filaAtual.falharam;
+    badge.hidden = !total;
+    badge.textContent = filaAtual.falharam ? `${total} não impresso(s)` : `${total} na fila de impressão`;
+    badge.title = 'Pedidos da cozinha esperando a impressora. Clique para ver.';
+    badge.classList.toggle('falhou', !!filaAtual.falharam);
+    if (document.getElementById('modal-fila').classList.contains('active')) renderizarFila();
+}
+setInterval(atualizarFila, 15000);
+
+function abrirFila() { renderizarFila(); document.getElementById('modal-fila').classList.add('active'); }
+function fecharFila() { document.getElementById('modal-fila').classList.remove('active'); }
+
+function renderizarFila() {
+    const box = document.getElementById('fila-lista');
+    if (!filaAtual.itens.length) { box.innerHTML = '<p class="field-help">Nenhum pedido esperando. Tudo foi impresso.</p>'; return; }
+    box.innerHTML = filaAtual.itens.map(j => `<div class="fila-item">
+        <div><strong>${escaparHtml(j.descricao || 'Pedido da cozinha')}</strong>
+        <small>${formatarDataHora(j.criadoEm)} · ${j.status === 'pendente' ? 'tentando de novo a cada 10 segundos' : 'parou de tentar depois de 30 minutos'}${j.erro ? ' · ' + escaparHtml(j.erro) : ''}</small></div>
+        <div class="fila-acoes"><button class="btn btn-secondary btn-sm" onclick="acaoFila(${j.id}, 'reenviar')">Tentar agora</button><button class="btn btn-danger btn-sm" onclick="acaoFila(${j.id}, 'descartar')">Descartar</button></div>
+    </div>`).join('');
+}
+
+async function acaoFila(id, acao) {
+    try { filaAtual = await api(`/api/impressoras/fila/${id}/${acao}`, {method: 'POST', body: {}}); }
+    catch (e) { avisar(e.message); }
+    renderizarFila();
+    setTimeout(atualizarFila, 1500);
 }
 
 function lerFormularioImpressoras() {
@@ -1054,7 +1133,8 @@ function lerFormularioImpressoras() {
         endereco: document.getElementById(`imp-${destino}-endereco`).value,
         colunas: Number(document.getElementById(`imp-${destino}-colunas`).value),
         acentos: document.getElementById(`imp-${destino}-acentos`).value,
-        copias: Number(document.getElementById(`imp-${destino}-copias`).value)
+        copias: Number(document.getElementById(`imp-${destino}-copias`).value),
+        letra: document.getElementById(`imp-${destino}-letra`)?.value || configImpressoras[destino].letra
     });
     return {cozinha: impressora('cozinha'), caixa: impressora('caixa'), comprovante: document.getElementById('imp-comprovante').value, cabecalho: document.getElementById('imp-cabecalho').value, rodape: document.getElementById('imp-rodape').value};
 }
@@ -1072,15 +1152,17 @@ async function testarImpressora(destino) {
     if (!await salvarImpressoras()) return;
     const doc = [
         ...configImpressoras.cabecalho.split('\n').filter(Boolean).map(v => ({t: 'texto', v, b: true, a: 'c'})),
-        {t: 'texto', v: `TESTE - IMPRESSORA ${destino === 'cozinha' ? 'DA COZINHA' : 'DO CAIXA'}`, b: true, g: true, a: 'c'},
+        {t: 'texto', v: `TESTE ${destino === 'cozinha' ? 'COZINHA' : 'CAIXA'}`, b: true, g: 2, a: 'c'},
         {t: 'texto', v: agoraTexto(), a: 'c'},
         {t: 'linha'},
+        {t: 'texto', v: '2x Açaí 500ml', b: true, g: 1},
+        {t: 'texto', v: '>> exemplo de observação', b: true},
         {t: 'texto', v: 'Acentuação: Açaí, maçã, pão, café'},
         {t: 'par', e: 'Item à esquerda', d: 'R$ 12,34'},
         {t: 'linha'},
         {t: 'texto', v: 'Se este papel saiu, está tudo certo!', a: 'c'}
     ];
-    try { await imprimir(destino, doc); if (configImpressoras[destino].modo !== 'navegador') avisar('Teste enviado para a impressora.'); }
+    try { await imprimir(destino, doc, {fila: false}); if (configImpressoras[destino].modo !== 'navegador') avisar('Teste enviado para a impressora.'); }
     catch (e) { document.getElementById('impressoras-erro').textContent = e.message; }
 }
 

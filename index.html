@@ -47,7 +47,7 @@
                 <li class="so-admin"><a href="#" id="nav-usuarios" onclick="trocarAba('usuarios')">Usuários</a></li>
                 <li class="so-admin"><a href="#" id="nav-impressoras" onclick="trocarAba('impressoras')">Impressoras</a></li>
             </ul>
-            <div class="navbar-user"><span id="usuario-nome"></span><button class="btn btn-secondary btn-sm" onclick="sair()">Sair</button></div>
+            <div class="navbar-user"><button id="fila-badge" class="fila-badge" type="button" hidden onclick="abrirFila()"></button><span id="usuario-nome"></span><button class="btn btn-secondary btn-sm" onclick="sair()">Sair</button></div>
         </nav>
 
         <div class="app-container">
@@ -257,6 +257,15 @@
                 <p id="transferencia-erro" class="form-error" role="alert"></p>
                 <button class="btn btn-primary full-width" type="submit">Confirmar transferência</button>
             </form>
+        </div>
+    </div>
+    <div class="modal-overlay" id="modal-fila" role="dialog" aria-modal="true" aria-labelledby="titulo-fila">
+        <div class="modal-container modal-sm">
+            <div class="modal-header"><h2 id="titulo-fila">Pedidos aguardando impressora</h2><button class="close-btn" aria-label="Fechar" onclick="fecharFila()">&times;</button></div>
+            <div class="modal-body">
+                <p class="field-help" style="margin:0 0 12px;">A impressora da cozinha não respondeu. Os pedidos saem sozinhos, na ordem, assim que ela voltar. Confira se está ligada, com papel e no Wi-Fi.</p>
+                <div id="fila-lista"></div>
+            </div>
         </div>
     </div>
     <div id="toast" role="status" class="toast" hidden></div>

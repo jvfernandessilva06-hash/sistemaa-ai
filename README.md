@@ -36,7 +36,16 @@ Na aba **Impressoras** (administrador) configure a impressora da **cozinha** (pe
 - **Impressora de rede:** informe o IP; o sistema envia comandos ESC/POS direto pela porta 9100.
 - **USB compartilhada no Windows:** compartilhe a impressora no Windows e informe o nome do compartilhamento.
 
-Na comanda, **Enviar para a cozinha** imprime só os itens marcados para a cozinha que ainda não foram enviados. O comprovante pode ser impresso depois do pagamento (sempre, perguntando ou nunca) e reimpresso pelo Histórico.
+Na comanda, **Enviar para a cozinha** imprime só os itens marcados para a cozinha que ainda não foram enviados. O pedido da cozinha traz apenas o número da comanda, os itens, as quantidades e as observações. O comprovante pode ser impresso depois do pagamento (sempre, perguntando ou nunca) e reimpresso pelo Histórico.
+
+- **Procurar na rede:** acha sozinho as impressoras de rede (porta 9100) no mesmo Wi-Fi do computador.
+- **Tamanho da letra** dos itens da cozinha: normal, grande ou extra grande.
+- **Fila de reenvio:** se a impressora da cozinha estiver desligada ou sem rede, o pedido fica guardado e sai sozinho, na ordem, quando ela voltar. A barra de cima mostra quantos pedidos estão esperando. Depois de 30 minutos o sistema para de tentar e deixa o pedido na lista para reenviar ou descartar.
+- **IP fixo:** reserve o IP da impressora no roteador (reserva de DHCP) para que ele não mude depois de uma queda de energia.
+
+## Abrir sozinho com o Windows
+
+Dê dois cliques em `inicio-automatico.bat` uma vez. A partir daí, sempre que o computador ligar, o sistema abre sozinho. Para desligar, dê dois cliques de novo. Se o servidor parar por algum erro, o `iniciar.bat` reinicia ele em 5 segundos.
 
 ## Regras
 
