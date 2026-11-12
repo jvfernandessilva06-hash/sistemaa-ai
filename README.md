@@ -2,16 +2,37 @@
 
 1. Abra `iniciar.bat` e mantenha a janela aberta enquanto usar o sistema.
 2. No navegador, acesse http://localhost:3000.
-3. Entre em **Cadastrar produtos** ou na aba **Produtos**.
+3. No primeiro acesso, crie o usuário **administrador**. Depois, cadastre os atendentes na aba **Usuários**.
 
-O banco SQLite é criado automaticamente em `data/produtos.db`. Não é necessário instalar bibliotecas. O servidor usa Node.js 22.13 ou superior; o iniciador também encontra o runtime disponível neste ambiente.
+Não é necessário instalar bibliotecas. O servidor usa Node.js 22.13 ou superior; o iniciador também encontra o runtime disponível neste ambiente.
 
-Produtos são gravados no banco local. Comandas, vendas e caixa ainda usam o armazenamento do navegador, como antes. Abrir `index.html` diretamente não conecta o banco; use o endereço local. Como é outro endereço, os dados antigos de vendas do arquivo HTML não aparecem automaticamente nesse navegador/endereço.
+## Onde ficam os dados
 
-O cadastro inclui código único, nome, preço por unidade ou kg, categoria e código de barras opcionais, envio à cozinha e status ativo/inativo. Produtos inativos permanecem cadastrados, mas saem da busca e dos atalhos de venda. Alterar o cadastro não muda itens já lançados nas comandas.
+Tudo fica no banco SQLite `data/produtos.db`, criado automaticamente neste computador: produtos, usuários, comandas abertas, vendas, pagamentos e caixas. Fechar o navegador ou reiniciar o computador não apaga nada.
 
-Para produtos por kg, informe o peso em kg na comanda (ex.: 0,350 para 350 g). Valores são arredondados em centavos por item.
+Para fazer backup, encerre o servidor e copie a pasta `data` para um local seguro (pen drive, Google Drive). O arquivo do banco não deve ser publicado junto com o código.
 
-Para copiar o banco, encerre o servidor primeiro e copie a pasta `data` para um local seguro. O arquivo do banco não deve ser publicado junto com o código.
+## Perfis de acesso
 
-Verificação: `node test-products.cjs` usa um banco temporário e não altera os produtos reais.
+| | Atendente | Administrador |
+|---|---|---|
+| Comandas, pagamento, transferência | ✓ | ✓ |
+| Abrir e fechar o caixa | ✓ (contagem às cegas) | ✓ (vê a diferença) |
+| Histórico | Só do caixa aberto | Qualquer período, com cancelamento |
+| Relatórios | — | ✓ |
+| Produtos e usuários | — | ✓ |
+
+## Relatórios
+
+Na aba **Relatórios** o administrador escolhe o período e vê: número de vendas, faturamento, ticket médio, descontos, produtos mais vendidos (com busca), categorias, formas de pagamento, vendas por dia, horários de movimento e vendas por atendente. Vendas canceladas não entram nos números.
+
+As categorias vêm do cadastro de produtos: preencha a categoria de cada produto para o relatório de categorias funcionar.
+
+## Regras
+
+- Produtos inativos permanecem cadastrados, mas saem da busca e dos atalhos de venda. Alterar o cadastro não muda itens já lançados nas comandas.
+- Para produtos por kg, informe o peso em kg na comanda (ex.: 0,350 para 350 g). Valores são arredondados em centavos por item.
+- O faturamento de uma venda é o valor dos itens menos o desconto. Adiantamentos aparecem como forma de pagamento.
+- O fechamento compara o dinheiro contado com o esperado (fundo de troco + vendas em dinheiro).
+
+Verificação: `node test.cjs` usa um banco temporário e não altera os dados reais.

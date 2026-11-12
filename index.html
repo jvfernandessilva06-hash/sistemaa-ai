@@ -1,4 +1,4 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -8,16 +8,26 @@
 </head>
 <body>
 
-    <!-- TELA 0: INICIAL (LANDING PAGE) -->
-    <div id="screen-landing" class="screen active">
-        <div class="landing-card">
+    <!-- TELA 0: LOGIN / PRIMEIRO ACESSO -->
+    <div id="screen-login" class="screen active">
+        <div class="landing-card login-card">
             <h1>Sistema Açaí PDV</h1>
-            <p>Selecione uma opção para continuar no sistema:</p>
-            <div class="landing-buttons">
-                <button class="btn btn-primary btn-lg" onclick="solicitarAberturaCaixa()">Ir para Frente de Caixa</button>
-                <button class="btn btn-secondary btn-lg" onclick="trocarTelaDirect('cardapio')">Cadastrar produtos</button>
-                <button class="btn btn-secondary btn-lg" onclick="trocarTelaDirect('historico')">Consultar Histórico</button>
-            </div>
+            <form id="form-login" onsubmit="event.preventDefault(); fazerLogin()">
+                <p>Entre com seu usuário para continuar.</p>
+                <label for="login-usuario">Usuário</label><input id="login-usuario" autocomplete="username" required autocapitalize="none">
+                <label for="login-senha">Senha</label><input id="login-senha" type="password" autocomplete="current-password" required>
+                <p id="login-erro" class="form-error" role="alert"></p>
+                <button class="btn btn-primary btn-lg full-width" type="submit">Entrar</button>
+            </form>
+            <form id="form-configuracao" hidden onsubmit="event.preventDefault(); criarAdministrador()">
+                <p>Primeiro acesso: crie o usuário <strong>administrador</strong>. Ele vê os relatórios e cadastra produtos e funcionários.</p>
+                <label for="config-nome">Seu nome</label><input id="config-nome" maxlength="80" required>
+                <label for="config-login">Usuário (para entrar)</label><input id="config-login" maxlength="40" required autocapitalize="none" placeholder="Ex.: joao">
+                <label for="config-senha">Senha <span class="optional">(mínimo 6 caracteres)</span></label><input id="config-senha" type="password" minlength="6" autocomplete="new-password" required>
+                <label for="config-senha2">Repita a senha</label><input id="config-senha2" type="password" minlength="6" autocomplete="new-password" required>
+                <p id="config-erro" class="form-error" role="alert"></p>
+                <button class="btn btn-primary btn-lg full-width" type="submit">Criar administrador e entrar</button>
+            </form>
         </div>
     </div>
 
@@ -25,17 +35,19 @@
     <div id="screen-app" class="screen">
         <!-- BARRA DE NAVEGAÇÃO -->
         <nav class="navbar">
-            <div class="navbar-brand" onclick="voltarTelaInicial()" style="cursor:pointer;" title="Voltar à tela inicial">
+            <div class="navbar-brand" onclick="trocarAba('pdv')" style="cursor:pointer;" title="Ir para a frente de caixa">
                 Açaí PDV <small id="status-caixa-badge" class="badge-caixa">Caixa Fechado</small>
             </div>
             <ul class="navbar-menu">
                 <li><a href="#" id="nav-pdv" class="active" onclick="trocarAba('pdv')">Frente de Caixa</a></li>
                 <li><a href="#" id="nav-historico" onclick="trocarAba('historico')">Histórico</a></li>
-                <li><a href="#" id="nav-cardapio" onclick="trocarAba('cardapio')">Produtos</a></li>
                 <li><a href="#" id="nav-caixa" onclick="trocarAba('caixa')">Fechamento</a></li>
-                <li><a href="#" id="nav-impressoras" onclick="trocarAba('impressoras')">Impressoras</a></li>
-                <li><a href="#" id="nav-usuarios" onclick="trocarAba('usuarios')">Usuários</a></li>
+                <li class="so-admin"><a href="#" id="nav-relatorios" onclick="trocarAba('relatorios')">Relatórios</a></li>
+                <li class="so-admin"><a href="#" id="nav-cardapio" onclick="trocarAba('cardapio')">Produtos</a></li>
+                <li class="so-admin"><a href="#" id="nav-usuarios" onclick="trocarAba('usuarios')">Usuários</a></li>
+                <li class="so-admin"><a href="#" id="nav-impressoras" onclick="trocarAba('impressoras')">Impressoras</a></li>
             </ul>
+            <div class="navbar-user"><span id="usuario-nome"></span><button class="btn btn-secondary btn-sm" onclick="sair()">Sair</button></div>
         </nav>
 
         <div class="app-container">
@@ -61,19 +73,29 @@
                 </div>
             </div>
 
-            <!-- OUTRAS ABAS -->
-            <div id="view-historico" class="view-section"><div class="view-content-box"><h2>Histórico de Vendas</h2><div id="historico-list" style="margin-top:15px;"></div></div></div>
+            <!-- ABA: HISTÓRICO -->
+            <div id="view-historico" class="view-section"><div class="view-content-box">
+                <h2>Histórico de Vendas</h2><p id="historico-descricao" class="field-help"></p>
+                <form class="filtros so-admin" onsubmit="event.preventDefault(); renderizarHistorico()">
+                    <label>De <input type="date" id="historico-inicio"></label>
+                    <label>Até <input type="date" id="historico-fim"></label>
+                    <button class="btn btn-primary" type="submit">Buscar</button>
+                </form>
+                <div id="historico-list" style="margin-top:15px;"></div>
+            </div></div>
+
+            <!-- ABA: PRODUTOS (ADMIN) -->
             <div id="view-cardapio" class="view-section"><div class="view-content-box">
- <div class="products-heading"><div><h2>Produtos</h2><p class="field-help">Cadastre e organize os produtos da loja.</p></div><button class="btn btn-primary" onclick="novoProduto()">+ Novo produto</button></div>
+ <div class="products-heading"><div><h2>Produtos</h2><p class="field-help">Cadastre e organize os produtos da loja. A categoria é usada nos relatórios.</p></div><button class="btn btn-primary" onclick="novoProduto()">+ Novo produto</button></div>
  <p id="produtos-conexao" role="status" class="field-help"></p><button id="produtos-reconectar" class="btn btn-secondary" hidden onclick="carregarProdutos()">Tentar conectar novamente</button>
  <div class="products-layout">
-  <section class="products-list-panel" aria-label="Produtos cadastrados"><input id="produto-busca" type="search" placeholder="Buscar nome, código ou código de barras" aria-label="Buscar produtos" oninput="renderizarProdutos()"><div class="table-scroll"><table class="table-items"><thead><tr><th>Código</th><th>Produto</th><th>Preço</th><th>Status</th><th></th></tr></thead><tbody id="produtos-lista"></tbody></table></div></section>
+  <section class="products-list-panel" aria-label="Produtos cadastrados"><input id="produto-busca" type="search" placeholder="Buscar nome, código ou código de barras" aria-label="Buscar produtos" oninput="renderizarProdutos()"><div class="table-scroll"><table class="table-items"><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Preço</th><th>Status</th><th></th></tr></thead><tbody id="produtos-lista"></tbody></table></div></section>
   <form id="produto-form" class="product-form" onsubmit="event.preventDefault(); salvarProduto()">
    <h3 id="produto-form-titulo">Novo produto</h3><input id="produto-id" type="hidden">
    <label for="produto-nome">Nome do produto *</label><input id="produto-nome" maxlength="120" required placeholder="Ex.: Açaí por kg">
    <div class="product-fields"><div><label for="produto-codigo">Código *</label><input id="produto-codigo" maxlength="40" required placeholder="Ex.: 103"></div><div><label for="produto-unidade">Forma de venda *</label><select id="produto-unidade" onchange="atualizarRotuloPreco()"><option value="UN">Unidade (UN)</option><option value="KG">Quilograma (KG)</option></select></div></div>
    <label id="produto-preco-label" for="produto-preco">Preço por unidade (R$) *</label><input id="produto-preco" type="number" min="0" max="999999.99" step="0.01" required placeholder="0,00">
-   <label for="produto-categoria">Categoria <span class="optional">(opcional)</span></label><input id="produto-categoria" maxlength="80" placeholder="Ex.: Açaí, bebidas, adicionais">
+   <label for="produto-categoria">Categoria <span class="optional">(recomendado)</span></label><input id="produto-categoria" maxlength="80" list="categorias-existentes" placeholder="Ex.: Açaí, Bebidas, Adicionais"><datalist id="categorias-existentes"></datalist>
    <label for="produto-barras">Código de barras <span class="optional">(opcional)</span></label><input id="produto-barras" maxlength="80" placeholder="Digite ou leia o código">
    <label class="checkbox-label"><input id="produto-cozinha" type="checkbox"> Enviar para a cozinha</label>
    <label class="checkbox-label"><input id="produto-ativo" type="checkbox" checked> Disponível para venda</label>
@@ -81,9 +103,43 @@
   </form>
  </div>
 </div></div>
-            <div id="view-caixa" class="view-section"><div class="view-content-box"><h2>Fechamento de Caixa</h2><div id="caixa-resumo-box"></div></div></div>
-            <div id="view-impressoras" class="view-section"><div class="view-content-box"><h2>Impressoras</h2></div></div>
-            <div id="view-usuarios" class="view-section"><div class="view-content-box"><h2>Usuários</h2></div></div>
+
+            <!-- ABA: FECHAMENTO DE CAIXA -->
+            <div id="view-caixa" class="view-section"><div class="view-content-box"><h2>Fechamento de Caixa</h2><div id="caixa-resumo-box" style="margin-top:15px;"></div></div></div>
+
+            <!-- ABA: RELATÓRIOS (ADMIN) -->
+            <div id="view-relatorios" class="view-section"><div class="view-content-box">
+                <h2>Relatórios</h2><p class="field-help">Vendas canceladas não entram nos números.</p>
+                <form class="filtros" onsubmit="event.preventDefault(); carregarRelatorio()">
+                    <label>Período <select id="rel-periodo" onchange="aplicarPeriodoRelatorio()">
+                        <option value="hoje">Hoje</option><option value="ontem">Ontem</option><option value="7dias">Últimos 7 dias</option>
+                        <option value="mes" selected>Este mês</option><option value="mespassado">Mês passado</option><option value="ano">Este ano</option><option value="personalizado">Personalizado</option>
+                    </select></label>
+                    <label>De <input type="date" id="rel-inicio" onchange="document.getElementById('rel-periodo').value='personalizado'"></label>
+                    <label>Até <input type="date" id="rel-fim" onchange="document.getElementById('rel-periodo').value='personalizado'"></label>
+                    <button class="btn btn-primary" type="submit">Atualizar</button>
+                </form>
+                <div id="rel-conteudo"></div>
+            </div></div>
+
+            <!-- ABA: USUÁRIOS (ADMIN) -->
+            <div id="view-usuarios" class="view-section"><div class="view-content-box">
+ <div class="products-heading"><div><h2>Usuários</h2><p class="field-help">Atendentes usam o caixa. Administradores também veem relatórios, produtos e usuários.</p></div><button class="btn btn-primary" onclick="novoUsuario()">+ Novo usuário</button></div>
+ <div class="products-layout">
+  <section class="products-list-panel" aria-label="Usuários cadastrados"><div class="table-scroll"><table class="table-items"><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Status</th><th></th></tr></thead><tbody id="usuarios-lista"></tbody></table></div></section>
+  <form id="usuario-form" class="product-form" onsubmit="event.preventDefault(); salvarUsuario()">
+   <h3 id="usuario-form-titulo">Novo usuário</h3><input id="usuario-id" type="hidden">
+   <label for="usuario-nome-input">Nome *</label><input id="usuario-nome-input" maxlength="80" required>
+   <label for="usuario-login">Usuário (para entrar) *</label><input id="usuario-login" maxlength="40" required autocapitalize="none" placeholder="Ex.: maria">
+   <label for="usuario-senha">Senha</label><input id="usuario-senha" type="password" minlength="6" autocomplete="new-password"><p id="usuario-senha-ajuda" class="field-help" style="margin-top:6px;">Mínimo de 6 caracteres.</p>
+   <label for="usuario-perfil">Perfil *</label><select id="usuario-perfil"><option value="atendente">Atendente</option><option value="admin">Administrador</option></select>
+   <label class="checkbox-label"><input id="usuario-ativo" type="checkbox" checked> Pode entrar no sistema</label>
+   <p id="usuario-erro" class="form-error" role="alert"></p><div class="product-form-actions"><button class="btn btn-primary" type="submit">Salvar usuário</button><button class="btn btn-secondary" type="button" onclick="novoUsuario()">Limpar</button></div>
+  </form>
+ </div>
+</div></div>
+
+            <div id="view-impressoras" class="view-section"><div class="view-content-box"><h2>Impressoras</h2><p class="field-help">Em breve: impressão direta na impressora térmica da cozinha e do caixa.</p></div></div>
         </div>
     </div>
 
@@ -92,12 +148,13 @@
         <div class="modal-container modal-sm">
             <div class="modal-header">
                 <h2>Abertura de Caixa</h2>
+                <button class="close-btn" aria-label="Fechar abertura de caixa" onclick="fecharAberturaCaixa()">&times;</button>
             </div>
-            <div class="modal-body">
+            <form class="modal-body" onsubmit="event.preventDefault(); confirmarAberturaCaixa()">
                 <p style="margin-bottom: 10px;">Informe o valor do fundo de caixa (troco inicial):</p>
-                <input type="number" step="0.01" id="input-fundo-caixa" placeholder="R$ 0,00" style="width:100%; padding:10px; font-size:16px;">
-                <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="confirmarAberturaCaixa()">Abrir Caixa e Entrar</button>
-            </div>
+                <input type="number" step="0.01" min="0" id="input-fundo-caixa" placeholder="R$ 0,00" style="width:100%; padding:10px; font-size:16px;">
+                <button class="btn btn-primary" type="submit" style="width:100%; margin-top:15px;">Abrir Caixa</button>
+            </form>
         </div>
     </div>
 

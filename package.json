@@ -2,6 +2,6 @@
   "name": "acai-pdv-local",
   "version": "1.0.0",
   "private": true,
-  "scripts": { "start": "node server.cjs", "test": "node test-products.cjs" },
+  "scripts": { "start": "node server.cjs", "test": "node test.cjs" },
   "engines": { "node": ">=22.13.0" }
 }

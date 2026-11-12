@@ -215,3 +215,40 @@ form .checkbox-label { display:flex; align-items:center; gap:8px; font-weight:40
 .search-result span { color:var(--muted); font-size:12px; }
 #busca-produtos-status { margin:0 0 16px; }
 @media(max-width:600px) { .search-result { grid-template-columns:minmax(0,1fr) auto; gap:6px; } .search-result strong { grid-column:1 / -1; } }
+
+/* Login e perfis */
+body:not([data-perfil="admin"]) .so-admin { display:none !important; }
+#screen-login { background:#f7f7fa; justify-content:center; align-items:center; overflow-y:auto; }
+.login-card { text-align:left; }
+.login-card h1 { text-align:center; }
+.login-card p { margin-bottom:6px; }
+.login-card .btn-lg { margin-top:8px; }
+.navbar-user { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--muted); }
+
+/* Filtros, cartões e painéis */
+.view-content-box h2 + .field-help { margin-top:6px; }
+.filtros { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin:18px 0 20px; }
+form.filtros label { display:flex; flex-direction:column; gap:6px; margin:0; font-size:12px; color:var(--muted); }
+form.filtros input, form.filtros select { width:auto; }
+.cards-resumo { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:20px; }
+.card-resumo { background:white; border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+.card-resumo span { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+.card-resumo strong { font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; }
+.card-resumo small { display:block; margin-top:4px; color:var(--muted); font-size:12px; }
+.relatorio-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); gap:16px; }
+.painel { background:white; border:1px solid var(--line); border-radius:12px; padding:18px; min-width:0; }
+.painel h3 { font-size:15px; margin-bottom:12px; }
+.painel-largo { grid-column:1 / -1; }
+.painel-topo { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.painel-topo h3 { margin:0; }
+.painel-topo input { width:min(100%,300px); }
+.ranking td, .ranking th { padding:7px 8px; }
+.barra { height:6px; background:#f1eaf5; border-radius:3px; min-width:36px; }
+.barra > i { display:block; height:100%; background:var(--accent); border-radius:3px; }
+.table-items .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.positivo { color:#397451; }
+.negativo { color:#b34b55; }
+.venda-cancelada td { color:#9a94a3; text-decoration:line-through; }
+.venda-cancelada td.status-venda, .venda-cancelada td:last-child { text-decoration:none; }
+.fechamento-form { max-width:440px; background:white; border:1px solid var(--line); border-radius:12px; padding:20px; }
+.fechamento-form h3 { font-size:16px; }
