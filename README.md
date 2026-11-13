@@ -41,7 +41,13 @@ No cadastro de produtos, marque **"É um adicional"** nos complementos (Nutella,
 
 ## Relatórios
 
-Na aba **Relatórios** o administrador escolhe o período e vê: número de vendas, faturamento, ticket médio, descontos, produtos mais vendidos (com busca), categorias, formas de pagamento, vendas por dia, horários de movimento e vendas por atendente. Vendas canceladas não entram nos números.
+Na aba **Relatórios** o administrador escolhe o período e vê:
+
+- **Resumo** (faturamento, vendas, ticket médio, itens por venda, descontos e canceladas), com seta comparando com o período anterior: ontem, os mesmos dias logo antes, o mesmo trecho do mês passado ("Este mês") ou do ano passado ("Este ano"). Em descontos e cancelamentos, subir aparece como ruim.
+- **Gráficos de colunas:** faturamento por horário (um dia) ou por dia/mês (vários dias), média por horário e, a partir de 14 dias, média por dia da semana. Passe o mouse numa coluna para ver o valor; "Ver os números" mostra a tabela.
+- **Produtos mais vendidos** (com busca e % do total), categorias, formas de pagamento e atendentes (com ticket médio).
+
+Vendas canceladas não entram nos números.
 
 As categorias vêm do cadastro de produtos: preencha a categoria de cada produto para o relatório de categorias funcionar.
 

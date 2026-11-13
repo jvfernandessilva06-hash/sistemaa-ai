@@ -1187,37 +1187,127 @@ async function carregarRelatorio() {
     box.innerHTML = '<p class="field-help">Carregando…</p>';
     try { relatorioAtual = await api(`/api/relatorios?inicio=${inicio}&fim=${fim}`); }
     catch (e) { box.innerHTML = `<p class="form-error">${escaparHtml(e.message)}</p>`; return; }
-    const r = relatorioAtual, s = r.resumo;
-    const hora = h => String(h).padStart(2, '0') + 'h';
+    const r = relatorioAtual, s = r.resumo, a = r.anterior.resumo;
+    const umDia = r.inicio === r.fim;
     box.innerHTML = `
+        <p class="comparacao">As setas comparam com ${escaparHtml(textoPeriodoAnterior(r))}: <strong>${formatarPeriodo(r.anterior.inicio, r.anterior.fim)}</strong>${a.vendas ? ` (${a.vendas} vendas, ${formatarMoeda(a.faturamento)})` : ' (sem vendas)'}.</p>
         <div class="cards-resumo">
-            <div class="card-resumo"><span>Vendas</span><strong>${s.vendas}</strong></div>
-            <div class="card-resumo"><span>Faturamento</span><strong>${formatarMoeda(s.faturamento)}</strong></div>
-            <div class="card-resumo"><span>Ticket médio</span><strong>${formatarMoeda(s.ticketMedio)}</strong></div>
-            <div class="card-resumo"><span>Descontos dados</span><strong>${formatarMoeda(s.descontos)}</strong></div>
-            <div class="card-resumo"><span>Canceladas</span><strong>${s.canceladas}</strong><small>${formatarMoeda(s.valorCancelado)}</small></div>
+            <div class="card-resumo card-destaque"><span>Faturamento</span><strong>${formatarMoeda(s.faturamento)}</strong>${variacao(s.faturamento, a.faturamento)}</div>
+            <div class="card-resumo"><span>Vendas</span><strong>${s.vendas}</strong>${variacao(s.vendas, a.vendas)}</div>
+            <div class="card-resumo"><span>Ticket médio</span><strong>${formatarMoeda(s.ticketMedio)}</strong>${variacao(s.ticketMedio, a.ticketMedio)}</div>
+            <div class="card-resumo"><span>Itens por venda</span><strong>${s.itensPorVenda.toLocaleString('pt-BR')}</strong>${variacao(s.itensPorVenda, a.itensPorVenda)}</div>
+            <div class="card-resumo"><span>Descontos dados</span><strong>${formatarMoeda(s.descontos)}</strong>${variacao(s.descontos, a.descontos, false)}</div>
+            <div class="card-resumo"><span>Canceladas</span><strong>${s.canceladas}</strong><small>${formatarMoeda(s.valorCancelado)}</small>${variacao(s.canceladas, a.canceladas, false)}</div>
         </div>
         ${s.vendas ? `<div class="relatorio-grid">
+            ${umDia ? '' : painelGrafico(...graficoPorDia(r))}
+            ${painelGrafico(umDia ? 'Faturamento por horário' : 'Média por horário (por dia com venda)', pontosPorHora(r, umDia), 'Horário')}
+            ${diasNoPeriodo(r).length >= 14 ? painelGrafico('Média por dia da semana', pontosPorDiaSemana(r), 'Dia') : ''}
             <section class="painel painel-largo">
                 <div class="painel-topo"><h3>Produtos mais vendidos</h3><input id="rel-busca-produto" type="search" placeholder="Pesquisar produto ou categoria" aria-label="Pesquisar produto no relatório" oninput="renderizarTabelaProdutos()"></div>
                 <div id="rel-produtos"></div>
-                <p class="field-help">Valores dos itens antes dos descontos da venda.</p>
+                <p class="field-help">Valores dos itens antes dos descontos da venda. Adicionais aparecem como produtos próprios.</p>
             </section>
             <section class="painel"><h3>Categorias</h3>${tabelaRanking(r.categorias, 'categoria', [['Itens', x => x.itens]])}</section>
             <section class="painel"><h3>Formas de pagamento</h3>${tabelaRanking(r.pagamentos, 'metodo', [['Vendas', x => x.vendas]])}</section>
-            <section class="painel"><h3>Vendas por dia</h3>${tabelaRanking(r.dias, 'dia', [['Vendas', x => x.vendas]], d => d.split('-').reverse().join('/'), false)}</section>
-            <section class="painel"><h3>Horários de movimento</h3>${tabelaRanking(r.horas, 'hora', [['Vendas', x => x.vendas]], hora, false)}</section>
-            <section class="painel"><h3>Atendentes</h3>${tabelaRanking(r.atendentes, 'nome', [['Vendas', x => x.vendas]])}</section>
+            <section class="painel painel-largo"><h3>Atendentes</h3>${tabelaRanking(r.atendentes, 'nome', [['Vendas', x => x.vendas], ['Ticket médio', x => formatarMoeda(x.valor / x.vendas)]])}</section>
         </div>` : '<p class="field-help">Nenhuma venda neste período.</p>'}`;
     if (s.vendas) renderizarTabelaProdutos();
 }
 
+const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const dataLocal = iso => new Date(iso + 'T12:00:00');
+function formatarPeriodo(inicio, fim) {
+    const d = iso => iso.split('-').reverse().join('/');
+    return inicio === fim ? d(inicio) : `${d(inicio)} a ${d(fim)}`;
+}
+function textoPeriodoAnterior(r) {
+    if (r.inicio === r.fim) return r.fim === hojeISO() ? 'ontem' : 'o dia anterior';
+    if (r.inicio.endsWith('-01-01') && r.anterior.inicio.slice(5) === '01-01') return 'o mesmo período do ano passado';
+    if (r.inicio.endsWith('-01') && r.inicio.slice(0, 7) === r.fim.slice(0, 7)) return 'o mesmo período do mês passado';
+    return `os ${diasNoPeriodo({inicio: r.anterior.inicio, fim: r.anterior.fim}).length} dias anteriores`;
+}
+// Seta e texto junto da cor, para não depender só dela. Em descontos e cancelamentos, subir é ruim.
+function variacao(atual, antes, subirEhBom = true) {
+    if (!antes) return atual ? '<small class="variacao">sem base para comparar</small>' : '';
+    const pct = (atual - antes) / antes * 100;
+    if (Math.abs(pct) < 0.5) return '<small class="variacao">= igual</small>';
+    const bom = (pct > 0) === subirEhBom;
+    return `<small class="variacao ${bom ? 'bom' : 'ruim'}">${pct > 0 ? '▲ +' : '▼ −'}${Math.abs(pct).toLocaleString('pt-BR', {maximumFractionDigits: 0})}%</small>`;
+}
+
+// Todos os dias do filtro até hoje, inclusive os sem venda (para o gráfico não esconder dia fraco).
+function diasNoPeriodo(r) {
+    const dias = [], fim = r.fim < hojeISO() ? r.fim : hojeISO();
+    for (let d = dataLocal(r.inicio); hojeISO(d) <= fim; d.setDate(d.getDate() + 1)) dias.push(hojeISO(d));
+    return dias;
+}
+function graficoPorDia(r) {
+    const porDia = Object.fromEntries(r.dias.map(d => [d.dia, d]));
+    const dias = diasNoPeriodo(r);
+    // Período longo (mais de 2 meses) vira uma coluna por mês.
+    if (dias.length > 62) {
+        const meses = {};
+        for (const d of r.dias) { const m = d.dia.slice(0, 7); meses[m] = meses[m] || {valor: 0, vendas: 0}; meses[m].valor += d.valor; meses[m].vendas += d.vendas; }
+        const nomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+        return ['Faturamento por mês', Object.entries(meses).sort().map(([m, v]) => ({rotulo: `${nomes[Number(m.slice(5)) - 1]}/${m.slice(2, 4)}`, ...v})), 'Mês'];
+    }
+    return ['Faturamento por dia', dias.map(dia => ({rotulo: `${DIAS_SEMANA[dataLocal(dia).getDay()]} ${dia.slice(8)}/${dia.slice(5, 7)}`, valor: porDia[dia]?.valor || 0, vendas: porDia[dia]?.vendas || 0})), 'Dia'];
+}
+function pontosPorHora(r, umDia) {
+    const dias = umDia ? 1 : r.dias.length || 1;
+    const horas = r.horas.map(h => h.hora);
+    const pontos = [];
+    for (let h = Math.min(...horas); h <= Math.max(...horas); h++) {
+        const x = r.horas.find(l => l.hora === h);
+        pontos.push({rotulo: `${String(h).padStart(2, '0')}h`, valor: (x?.valor || 0) / dias, vendas: Math.round((x?.vendas || 0) / dias * 10) / 10});
+    }
+    return pontos;
+}
+function pontosPorDiaSemana(r) {
+    const soma = DIAS_SEMANA.map(() => ({valor: 0, vendas: 0, dias: 0}));
+    const porDia = Object.fromEntries(r.dias.map(d => [d.dia, d]));
+    for (const dia of diasNoPeriodo(r)) { const s = soma[dataLocal(dia).getDay()]; s.dias++; s.valor += porDia[dia]?.valor || 0; s.vendas += porDia[dia]?.vendas || 0; }
+    // Semana começando na segunda, como no calendário da loja.
+    return [1, 2, 3, 4, 5, 6, 0].map(i => ({rotulo: DIAS_SEMANA[i], valor: soma[i].dias ? soma[i].valor / soma[i].dias : 0, vendas: soma[i].dias ? Math.round(soma[i].vendas / soma[i].dias * 10) / 10 : 0}));
+}
+
+// Gráfico de colunas de uma cor só. O valor aparece ao passar o mouse ou focar a coluna; o maior vem escrito;
+// "Ver os números" abre a mesma informação em tabela.
+function painelGrafico(titulo, pontos, rotuloColuna) {
+    const maior = Math.max(...pontos.map(p => p.valor), 0.01);
+    const topo = escalaBonita(maior);
+    const pico = pontos.find(p => p.valor === maior);
+    const compacto = v => v >= 1000 ? `R$ ${(v / 1000).toLocaleString('pt-BR', {maximumFractionDigits: 1})} mil` : `R$ ${Math.round(v).toLocaleString('pt-BR')}`;
+    const curto = p => pontos.length > 16 ? p.rotulo.split(' ').pop().slice(0, 2) : p.rotulo;
+    return `<section class="painel painel-largo">
+        <div class="painel-topo"><h3>${titulo}</h3><span class="field-help">Maior: <strong>${escaparHtml(pico.rotulo)}</strong>, ${formatarMoeda(pico.valor)} (${pico.vendas.toLocaleString('pt-BR')} vendas)</span></div>
+        <div class="grafico">
+            <div class="grafico-eixo" aria-hidden="true">${[1, 0.5, 0].map(f => `<span style="bottom:${f * 100}%">${compacto(topo * f)}</span>`).join('')}</div>
+            <div class="grafico-area">
+                ${[1, 0.5].map(f => `<i class="grafico-linha" style="bottom:${f * 100}%"></i>`).join('')}
+                ${pontos.map(p => `<div class="grafico-coluna" tabindex="0" aria-label="${escaparHtml(p.rotulo)}: ${formatarMoeda(p.valor)}, ${p.vendas.toLocaleString('pt-BR')} vendas" data-dica="${escaparHtml(p.rotulo)} · ${formatarMoeda(p.valor)} · ${p.vendas.toLocaleString('pt-BR')} vendas">
+                    ${p === pico ? `<b class="grafico-valor" style="bottom:${p.valor / topo * 100}%">${compacto(p.valor)}</b>` : ''}
+                    <i style="height:${p.valor / topo * 100}%"></i>
+                    <span class="grafico-rotulo" aria-hidden="true">${escaparHtml(curto(p))}</span>
+                </div>`).join('')}
+            </div>
+        </div>
+        <details class="grafico-tabela"><summary>Ver os números</summary>${tabelaRanking(pontos, 'rotulo', [['Vendas', x => x.vendas.toLocaleString('pt-BR')]], v => v, false, rotuloColuna)}</details>
+    </section>`;
+}
+// Topo do eixo arredondado (100, 200, 250, 500, 1000…), para as linhas de grade caírem em valores redondos.
+function escalaBonita(maior) {
+    const base = 10 ** Math.floor(Math.log10(maior));
+    return [1, 2, 2.5, 5, 10].map(m => m * base).find(v => v >= maior);
+}
+
 // Tabela com barra proporcional ao valor de cada linha.
-function tabelaRanking(linhas, campo, extras = [], formatar = v => v, numerar = true) {
+function tabelaRanking(linhas, campo, extras = [], formatar = v => v, numerar = true, nomeColuna = '') {
     if (!linhas.length) return '<p class="field-help">Sem dados.</p>';
     const maior = Math.max(...linhas.map(l => l.valor), 0.01);
     const total = linhas.reduce((t, l) => t + l.valor, 0) || 1;
-    return `<div class="table-scroll"><table class="table-items ranking"><thead><tr>${numerar ? '<th>#</th>' : ''}<th></th>${extras.map(e => `<th class="num">${e[0]}</th>`).join('')}<th class="num">Valor</th><th class="num">%</th><th></th></tr></thead><tbody>` +
+    return `<div class="table-scroll"><table class="table-items ranking"><thead><tr>${numerar ? '<th>#</th>' : ''}<th>${nomeColuna}</th>${extras.map(e => `<th class="num">${e[0]}</th>`).join('')}<th class="num">Valor</th><th class="num">%</th><th></th></tr></thead><tbody>` +
         linhas.map((l, i) => `<tr>${numerar ? `<td>${i + 1}</td>` : ''}<td>${escaparHtml(formatar(l[campo]))}</td>${extras.map(e => `<td class="num">${e[1](l)}</td>`).join('')}<td class="num">${formatarMoeda(l.valor)}</td><td class="num">${(l.valor / total * 100).toFixed(1)}%</td><td><div class="barra"><i style="width:${(l.valor / maior * 100).toFixed(1)}%"></i></div></td></tr>`).join('') +
         '</tbody></table></div>';
 }
@@ -1228,10 +1318,11 @@ function renderizarTabelaProdutos() {
     const ranking = relatorioAtual.produtos.map((p, i) => ({...p, posicao: i + 1}))
         .filter(p => !normalizarBusca(termo) || notaBusca(termo, {nome: p.nome, extras: [p.categoria], codigos: [p.codigo]}) > 0);
     const maior = Math.max(...relatorioAtual.produtos.map(p => p.valor), 0.01);
+    const total = relatorioAtual.produtos.reduce((t, p) => t + p.valor, 0) || 1;
     const caixa = document.getElementById('rel-produtos');
     if (!ranking.length) { caixa.innerHTML = '<p class="field-help">Nenhum produto encontrado.</p>'; return; }
-    caixa.innerHTML = '<div class="table-scroll"><table class="table-items ranking"><thead><tr><th>#</th><th>Produto</th><th>Categoria</th><th class="num">Quantidade</th><th class="num">Vendas</th><th class="num">Valor</th><th></th></tr></thead><tbody>' +
-        ranking.map(p => `<tr><td>${p.posicao}</td><td>${escaparHtml(p.nome)}</td><td>${escaparHtml(p.categoria)}</td><td class="num">${p.unidade === 'KG' ? p.quantidade.toLocaleString('pt-BR', {minimumFractionDigits: 3}) + ' kg' : p.quantidade}</td><td class="num">${p.vendas}</td><td class="num">${formatarMoeda(p.valor)}</td><td><div class="barra"><i style="width:${(p.valor / maior * 100).toFixed(1)}%"></i></div></td></tr>`).join('') +
+    caixa.innerHTML = '<div class="table-scroll"><table class="table-items ranking"><thead><tr><th>#</th><th>Produto</th><th>Categoria</th><th class="num">Quantidade</th><th class="num">Vendas</th><th class="num">Valor</th><th class="num">%</th><th></th></tr></thead><tbody>' +
+        ranking.map(p => `<tr><td>${p.posicao}</td><td>${escaparHtml(p.nome)}</td><td>${escaparHtml(p.categoria)}</td><td class="num">${p.unidade === 'KG' ? p.quantidade.toLocaleString('pt-BR', {minimumFractionDigits: 3}) + ' kg' : p.quantidade}</td><td class="num">${p.vendas}</td><td class="num">${formatarMoeda(p.valor)}</td><td class="num">${(p.valor / total * 100).toFixed(1)}%</td><td><div class="barra"><i style="width:${(p.valor / maior * 100).toFixed(1)}%"></i></div></td></tr>`).join('') +
         '</tbody></table></div>';
 }
 

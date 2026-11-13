@@ -557,6 +557,15 @@ function baixarBackup(ctx) {
 }
 
 // ---------- RELATÓRIOS ----------
+function resumoVendas(inicio, fim) {
+ const filtro = 'v.cancelada=0 AND date(v.data_hora) BETWEEN ? AND ?';
+ const r = db.prepare(`SELECT COUNT(*) AS vendas, COALESCE(SUM(total_centavos),0) AS faturamento, COALESCE(SUM(desconto_centavos),0) AS descontos FROM vendas v WHERE ${filtro}`).get(inicio, fim);
+ // Itens por venda conta os produtos lançados (não os adicionais); produto por kg conta como 1.
+ const itens = db.prepare(`SELECT COALESCE(SUM(CASE WHEN vi.unidade='KG' THEN 1 ELSE vi.quantidade END),0) AS n FROM venda_itens vi JOIN vendas v ON v.id=vi.venda_id WHERE vi.adicional_de IS NULL AND ${filtro}`).get(inicio, fim).n;
+ const canceladas = db.prepare('SELECT COUNT(*) AS vendas, COALESCE(SUM(total_centavos),0) AS valor FROM vendas v WHERE v.cancelada=1 AND date(v.data_hora) BETWEEN ? AND ?').get(inicio, fim);
+ return {vendas:r.vendas, faturamento:reais(r.faturamento), ticketMedio:r.vendas ? reais(Math.round(r.faturamento / r.vendas)) : 0, itensPorVenda:r.vendas ? Math.round(itens / r.vendas * 10) / 10 : 0,
+  descontos:reais(r.descontos), canceladas:canceladas.vendas, valorCancelado:reais(canceladas.valor)};
+}
 function relatorio(ctx) {
  const inicio = dataParam(ctx.url.searchParams.get('inicio')) || db.prepare("SELECT date('now','localtime','start of month') AS d").get().d;
  const fim = dataParam(ctx.url.searchParams.get('fim')) || hoje();
@@ -565,12 +574,20 @@ function relatorio(ctx) {
  const filtro = 'v.cancelada=0 AND date(v.data_hora) BETWEEN ? AND ?';
  // A categoria atual do produto tem prioridade, para que recategorizar um produto reorganize o histórico.
  const categoria = "COALESCE(NULLIF(pr.categoria,''), NULLIF(vi.categoria,''), 'Sem categoria')";
- const resumo = db.prepare(`SELECT COUNT(*) AS vendas, COALESCE(SUM(total_centavos),0) AS faturamento, COALESCE(SUM(desconto_centavos),0) AS descontos FROM vendas v WHERE ${filtro}`).get(...p);
- const canceladas = db.prepare('SELECT COUNT(*) AS vendas, COALESCE(SUM(total_centavos),0) AS valor FROM vendas v WHERE v.cancelada=1 AND date(v.data_hora) BETWEEN ? AND ?').get(...p);
  const valores = rows => rows.map(r => ({...r, valor:reais(r.valor)}));
+ // Período anterior para comparar: do ano começando em 1º de janeiro, o mesmo trecho do ano passado; do mês começando no dia 1,
+ // o mês passado até o mesmo dia; nos outros casos, a mesma quantidade de dias logo antes.
+ const anterior = db.prepare(`SELECT
+   CASE WHEN strftime('%m-%d', ?1) = '01-01' AND strftime('%Y', ?1) = strftime('%Y', ?2) AND strftime('%m', ?1) <> strftime('%m', ?2) THEN date(?1, '-1 year')
+        WHEN strftime('%d', ?1) = '01' AND strftime('%Y-%m', ?1) = strftime('%Y-%m', ?2) THEN date(?1, '-1 month')
+        ELSE date(?1, '-' || (julianday(?2) - julianday(?1) + 1) || ' days') END AS inicio,
+   CASE WHEN strftime('%m-%d', ?1) = '01-01' AND strftime('%Y', ?1) = strftime('%Y', ?2) AND strftime('%m', ?1) <> strftime('%m', ?2) THEN date(?2, '-1 year')
+        WHEN strftime('%d', ?1) = '01' AND strftime('%Y-%m', ?1) = strftime('%Y-%m', ?2) THEN min(date(?2, '-1 month'), date(?1, '-1 day'))
+        ELSE date(?1, '-1 day') END AS fim`).get(inicio, fim);
  return {
   inicio, fim,
-  resumo:{vendas:resumo.vendas, faturamento:reais(resumo.faturamento), ticketMedio:resumo.vendas ? reais(Math.round(resumo.faturamento / resumo.vendas)) : 0, descontos:reais(resumo.descontos), canceladas:canceladas.vendas, valorCancelado:reais(canceladas.valor)},
+  resumo:resumoVendas(inicio, fim),
+  anterior:{...anterior, resumo:resumoVendas(anterior.inicio, anterior.fim)},
   produtos:valores(db.prepare(`SELECT COALESCE(pr.nome, vi.nome) AS nome, vi.codigo, ${categoria} AS categoria, vi.unidade, ROUND(SUM(vi.quantidade),3) AS quantidade, SUM(vi.total_centavos) AS valor, COUNT(DISTINCT vi.venda_id) AS vendas FROM venda_itens vi JOIN vendas v ON v.id=vi.venda_id LEFT JOIN produtos pr ON pr.id=vi.produto_id WHERE ${filtro} GROUP BY COALESCE(vi.produto_id, vi.codigo || '|' || vi.nome) ORDER BY valor DESC`).all(...p)),
   categorias:valores(db.prepare(`SELECT ${categoria} AS categoria, SUM(vi.total_centavos) AS valor, COUNT(*) AS itens, COUNT(DISTINCT vi.venda_id) AS vendas FROM venda_itens vi JOIN vendas v ON v.id=vi.venda_id LEFT JOIN produtos pr ON pr.id=vi.produto_id WHERE ${filtro} GROUP BY 1 ORDER BY valor DESC`).all(...p)),
   pagamentos:valores(db.prepare(`SELECT pg.metodo, SUM(pg.valor_centavos) AS valor, COUNT(DISTINCT pg.venda_id) AS vendas FROM venda_pagamentos pg JOIN vendas v ON v.id=pg.venda_id WHERE ${filtro} GROUP BY pg.metodo ORDER BY valor DESC`).all(...p)),

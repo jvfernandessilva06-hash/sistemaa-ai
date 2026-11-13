@@ -102,6 +102,14 @@ function cliente() {
  assert.equal(rel.produtos[0].nome, 'Açaí 500ml'); assert.equal(rel.produtos[0].quantidade, 2);
  assert.deepEqual(rel.categorias.map(c => [c.categoria, c.valor]), [['Açaí', 53.47]]);
  assert.equal(rel.atendentes[0].nome, 'Ana');
+ assert.equal(rel.resumo.itensPorVenda, 3, '2 açaís + 1 item por kg');
+ assert.equal(rel.anterior.resumo.vendas, 0, 'mês anterior sem vendas');
+ const umDia = (await admin('/api/relatorios?inicio=2026-03-10&fim=2026-03-10')).body.anterior;
+ assert.deepEqual([umDia.inicio, umDia.fim], ['2026-03-09', '2026-03-09'], 'um dia compara com o dia anterior');
+ const mes = (await admin('/api/relatorios?inicio=2026-03-01&fim=2026-03-31')).body.anterior;
+ assert.deepEqual([mes.inicio, mes.fim], ['2026-02-01', '2026-02-28'], 'mês compara com o mês anterior');
+ const ano = (await admin('/api/relatorios?inicio=2026-01-01&fim=2026-11-12')).body.anterior;
+ assert.deepEqual([ano.inicio, ano.fim], ['2025-01-01', '2025-11-12'], 'ano compara com o mesmo trecho do ano passado');
 
  // Fechamento: fundo 100 + 32,47 em dinheiro = 132,47 esperado.
  const fechamento = await atendente('/api/caixa/fechar','POST',{contado:130,observacao:''});
