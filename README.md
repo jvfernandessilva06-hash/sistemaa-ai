@@ -1,7 +1,7 @@
 # Sistema Açaí local
 
-1. Abra `iniciar.bat` e mantenha a janela aberta enquanto usar o sistema.
-2. No navegador, acesse http://localhost:3000.
+1. Dê dois cliques em `criar-atalho.bat` uma vez: aparece o atalho **Delicias Acai** (com o logo) na área de trabalho.
+2. Abra pelo atalho (ou pelo `iniciar.bat`). O sistema abre numa janela própria, como aplicativo, pelo Brave, Edge ou Chrome (`abrir-janela.bat`). A janela preta do servidor fica minimizada na barra de tarefas: não feche ela enquanto usar o sistema. O endereço continua http://localhost:3000.
 3. No primeiro acesso, crie o usuário **administrador**. Depois, cadastre os atendentes na aba **Usuários**.
 
 Não é necessário instalar bibliotecas. O servidor usa Node.js 22.13 ou superior; o iniciador também encontra o runtime disponível neste ambiente.

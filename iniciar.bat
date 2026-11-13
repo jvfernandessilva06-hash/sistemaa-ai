@@ -2,15 +2,15 @@
 cd /d "%~dp0"
 title Sistema Acai - nao feche esta janela
 
-rem Se o sistema ja estiver rodando, so abre o navegador.
+rem Se o sistema ja estiver rodando, so abre a janela.
 powershell -NoProfile -Command "try { Invoke-WebRequest http://127.0.0.1:3000/api/me -UseBasicParsing -TimeoutSec 3 | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
 if not errorlevel 1 (
-  start "" http://localhost:3000
+  call abrir-janela.bat
   exit /b
 )
 
-rem Abre o sistema no navegador padrao depois que o servidor sobe.
-start "" /min cmd /c "timeout /t 3 /nobreak >nul & start http://localhost:3000"
+rem Abre a janela do sistema (como aplicativo) depois que o servidor sobe.
+start "" /min cmd /c "timeout /t 3 /nobreak >nul & call abrir-janela.bat"
 
 set "ACAI_NODE=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
 if not exist "%ACAI_NODE%" set "ACAI_NODE=node"

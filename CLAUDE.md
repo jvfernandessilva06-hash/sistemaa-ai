@@ -13,7 +13,7 @@ Use a skill **triagem-correcao** (avaliar → corrigir → provar). Nada de mexe
 - `banco.cjs`: cria as tabelas e faz as migrações (colunas novas via `ALTER TABLE` checando `PRAGMA table_info`). Banco em `data/produtos.db` (fora do Git).
 - `script.js`: toda a tela. `index.html`: estrutura. `style.css`: arquivo único, tokens em `:root`.
 - `test.cjs`: testes do servidor com banco temporário e uma impressora de rede falsa.
-- `iniciar.bat` sobe o servidor (reinicia se cair) e abre o navegador; `inicio-automatico.bat` liga/desliga o início com o Windows.
+- `iniciar.bat` sobe o servidor (reinicia se cair) e chama `abrir-janela.bat`, que abre o sistema como aplicativo (`--app`) no Brave/Edge/Chrome; `criar-atalho.bat` põe o atalho com `icone.ico` na área de trabalho; `inicio-automatico.bat` liga/desliga o início com o Windows. O `icone.ico` foi gerado a partir do `logo.png` (refazer se o logo mudar).
 
 ## Convenções
 
