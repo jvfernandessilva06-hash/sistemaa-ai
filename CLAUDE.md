@@ -27,6 +27,7 @@ Use a skill **triagem-correcao** (avaliar → corrigir → provar). Nada de mexe
 ## Decisões do dono (não mudar sem ele pedir)
 
 - Remover item da comanda **não pede senha**; só fica registrado em `registro_comandas`.
+- **Retirada de dinheiro (sangria) pede a senha de um administrador**; o reforço (suprimento) não pede. Quem autorizou fica em `movimentos_caixa.autorizado_por`.
 - **Sem cupom de "cancelado"** para a cozinha.
 - Pedido da cozinha: só número da comanda, número da comanda que vibra (campo "Vibra nº" ao lado do título; padrão = número da comanda), itens, quantidades, adicionais e observações (sem loja, preço, hora ou atendente).
 - **Adicionais são opcionais**: só abrem pelo botão "Adicionais" do item, nunca sozinhos.

@@ -65,7 +65,7 @@ function dialogo({titulo, mensagem = '', campos = [], ok = 'Confirmar', cancelar
         <label for="dialogo-${c.id}">${escaparHtml(c.rotulo)}${c.opcional ? ' <span class="optional">(opcional)</span>' : ''}</label>
         ${c.tipo === 'select'
             ? `<select id="dialogo-${c.id}">${c.opcoes.map(o => `<option ${o === c.valor ? 'selected' : ''}>${escaparHtml(o)}</option>`).join('')}</select>`
-            : `<input id="dialogo-${c.id}" ${c.tipo === 'dinheiro' ? 'inputmode="decimal"' : ''} maxlength="${c.max || 200}" value="${escaparHtml(c.valor ?? '')}" placeholder="${escaparHtml(c.placeholder || '')}" autocomplete="off">`}`).join('');
+            : `<input id="dialogo-${c.id}" ${c.tipo === 'dinheiro' ? 'inputmode="decimal"' : ''} ${c.tipo === 'senha' ? 'type="password"' : ''} maxlength="${c.max || 200}" value="${escaparHtml(c.valor ?? '')}" placeholder="${escaparHtml(c.placeholder || '')}" autocomplete="${c.tipo === 'senha' ? 'new-password' : 'off'}">`}`).join('');
     const botaoOk = document.getElementById('dialogo-ok');
     botaoOk.textContent = ok;
     botaoOk.className = `btn ${perigo ? 'btn-danger-forte' : 'btn-primary'}`;
@@ -84,7 +84,7 @@ function responderDialogo(confirmou) {
     if (!atual) return;
     let resposta = confirmou;
     if (confirmou && atual.campos.length) {
-        resposta = Object.fromEntries(atual.campos.map(c => [c.id, document.getElementById(`dialogo-${c.id}`).value.trim()]));
+        resposta = Object.fromEntries(atual.campos.map(c => { const v = document.getElementById(`dialogo-${c.id}`).value; return [c.id, c.tipo === 'senha' ? v : v.trim()]; }));
         const erro = atual.validar?.(resposta);
         if (erro) { document.getElementById('dialogo-erro').textContent = erro; return; }
     }
@@ -226,7 +226,7 @@ async function renderizarFechamento() {
                 <button class="btn btn-secondary" type="button" onclick="registrarMovimento('sangria')">Retirar dinheiro (sangria)</button>
                 <button class="btn btn-secondary" type="button" onclick="registrarMovimento('suprimento')">Reforçar troco (suprimento)</button>
             </div></div>
-            ${movimentos.length ? `<div class="table-scroll"><table class="table-items"><thead><tr><th>Hora</th><th>Tipo</th><th>Motivo</th><th>Quem</th><th class="num">Valor</th></tr></thead><tbody>${movimentos.map(m => `<tr><td>${formatarDataHora(m.dataHora).slice(11)}</td><td>${m.tipo === 'sangria' ? 'Retirada' : 'Reforço'}</td><td>${escaparHtml(m.motivo || '—')}</td><td>${escaparHtml(m.usuario)}</td><td class="num">${m.tipo === 'sangria' ? '−' : '+'} ${formatarMoeda(m.valor)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="field-help">Nenhuma retirada ou reforço neste caixa. Registre aqui quando tirar dinheiro da gaveta (ex.: pagar o gelo) ou colocar mais troco.</p>'}
+            ${movimentos.length ? `<div class="table-scroll"><table class="table-items"><thead><tr><th>Hora</th><th>Tipo</th><th>Motivo</th><th>Quem</th><th class="num">Valor</th></tr></thead><tbody>${movimentos.map(m => `<tr><td>${formatarDataHora(m.dataHora).slice(11)}</td><td>${m.tipo === 'sangria' ? 'Retirada' : 'Reforço'}</td><td>${escaparHtml(m.motivo || '—')}</td><td>${escaparHtml(m.usuario)}${m.autorizadoPor ? `<br><small>Autorizou: ${escaparHtml(m.autorizadoPor)}</small>` : ''}</td><td class="num">${m.tipo === 'sangria' ? '−' : '+'} ${formatarMoeda(m.valor)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="field-help">Nenhuma retirada ou reforço neste caixa. Registre aqui quando tirar dinheiro da gaveta (ex.: pagar o gelo) ou colocar mais troco.</p>'}
         </div>`;
         html += `<form class="painel fechamento-form" onsubmit="event.preventDefault(); fecharCaixa()">
             <h3>Fechar o caixa</h3>
@@ -286,21 +286,26 @@ async function fecharCaixa() {
     } catch (e) { avisar(e.message); }
 }
 
-async function registrarMovimento(tipo) {
+// Se a senha estiver errada, a janela volta com o valor e o motivo já preenchidos.
+async function registrarMovimento(tipo, anterior = {}) {
     const sangria = tipo === 'sangria';
     const r = await dialogo({
         titulo: sangria ? 'Retirar dinheiro da gaveta' : 'Reforçar o troco',
         mensagem: sangria ? 'Registre todo dinheiro que sair da gaveta para o fechamento bater.' : 'Registre o dinheiro que entrou na gaveta sem ser venda.',
-        campos: [{id: 'valor', rotulo: 'Valor (R$)', tipo: 'dinheiro', placeholder: '0,00'}, {id: 'motivo', rotulo: 'Motivo', placeholder: sangria ? 'Ex.: pagamento do gelo' : 'Ex.: troco trazido pelo dono', opcional: !sangria}],
+        campos: [{id: 'valor', rotulo: 'Valor (R$)', tipo: 'dinheiro', placeholder: '0,00', valor: anterior.valor}, {id: 'motivo', rotulo: 'Motivo', valor: anterior.motivo, placeholder: sangria ? 'Ex.: pagamento do gelo' : 'Ex.: troco trazido pelo dono', opcional: !sangria},
+            ...(sangria ? [{id: 'senhaAdmin', rotulo: 'Senha do administrador (para autorizar)', tipo: 'senha', max: 100}] : [])],
         ok: sangria ? 'Registrar retirada' : 'Registrar reforço',
-        validar: v => !(lerValor(v.valor) > 0) ? 'Informe um valor maior que zero.' : sangria && !v.motivo ? 'Informe o motivo da retirada.' : ''
+        validar: v => !(lerValor(v.valor) > 0) ? 'Informe um valor maior que zero.' : sangria && !v.motivo ? 'Informe o motivo da retirada.' : sangria && !v.senhaAdmin ? 'Digite a senha do administrador.' : ''
     });
     if (!r) return;
     try {
-        caixaAtual = (await api('/api/caixa/movimento', {method: 'POST', body: {tipo, valor: lerValor(r.valor), motivo: r.motivo}})).caixa;
+        caixaAtual = (await api('/api/caixa/movimento', {method: 'POST', body: {tipo, valor: lerValor(r.valor), motivo: r.motivo, senhaAdmin: r.senhaAdmin}})).caixa;
         avisar(sangria ? 'Retirada registrada.' : 'Reforço registrado.');
         renderizarFechamento();
-    } catch (e) { avisar(e.message); }
+    } catch (e) {
+        avisar(e.message);
+        if (sangria && /senha/i.test(e.message)) registrarMovimento(tipo, {valor: r.valor, motivo: r.motivo});
+    }
 }
 
 // ---------- COMANDAS ----------

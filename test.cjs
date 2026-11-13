@@ -161,9 +161,13 @@ function cliente() {
 
  // Sangria e suprimento entram no dinheiro esperado: 50 + 1,50 (crediário) + 5 - 10 = 46,50.
  assert.equal((await atendente('/api/caixa/movimento','POST',{tipo:'sangria',valor:10,motivo:''})).status, 400, 'retirada precisa de motivo');
- assert.equal((await atendente('/api/caixa/movimento','POST',{tipo:'sangria',valor:10,motivo:'Pagou o gelo'})).status, 201);
+ assert.equal((await atendente('/api/caixa/movimento','POST',{tipo:'sangria',valor:10,motivo:'Pagou o gelo'})).status, 403, 'retirada sem senha do administrador');
+ assert.equal((await atendente('/api/caixa/movimento','POST',{tipo:'sangria',valor:10,motivo:'Pagou o gelo',senhaAdmin:'123456'})).status, 403, 'senha de atendente não autoriza');
+ const retirada = await atendente('/api/caixa/movimento','POST',{tipo:'sangria',valor:10,motivo:'Pagou o gelo',senhaAdmin:'senha-forte'});
+ assert.equal(retirada.status, 201);
+ assert.equal(retirada.body.caixa.movimentos[0].autorizadoPor, 'Dono', 'guarda quem autorizou');
  const suprimento = await atendente('/api/caixa/movimento','POST',{tipo:'suprimento',valor:5,motivo:''});
- assert.equal(suprimento.body.caixa.movimentos.length, 2); assert.equal(suprimento.body.caixa.resumo, undefined);
+ assert.equal(suprimento.body.caixa.movimentos.length, 2); assert.equal(suprimento.body.caixa.movimentos[1].autorizadoPor, null, 'reforço não pede senha'); assert.equal(suprimento.body.caixa.resumo, undefined);
  await atendente('/api/caixa/fechar','POST',{contado:46.5,observacao:''});
  const caixa2 = (await admin('/api/caixas')).body[0].resumo;
  assert.equal(caixa2.dinheiroEsperado, 46.5); assert.equal(caixa2.diferenca, 0); assert.equal(caixa2.sangrias, 10);

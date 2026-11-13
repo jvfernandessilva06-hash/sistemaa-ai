@@ -148,6 +148,7 @@ UPDATE produtos SET adicional=1, categoria=CASE WHEN categoria='' THEN 'Adiciona
 UPDATE produtos SET aceita_adicionais=1, categoria=CASE WHEN categoria='' THEN 'Açaí' ELSE categoria END WHERE codigo IN ('101','102');`);
  }
  if (!colunas('venda_itens').includes('adicional_de')) db.exec('ALTER TABLE venda_itens ADD COLUMN adicional_de INTEGER REFERENCES venda_itens(id)');
+ if (!colunas('movimentos_caixa').includes('autorizado_por')) db.exec('ALTER TABLE movimentos_caixa ADD COLUMN autorizado_por INTEGER REFERENCES usuarios(id)');
  if (!colunas('vendas').includes('conta_crediario_id')) db.exec('ALTER TABLE vendas ADD COLUMN conta_crediario_id INTEGER REFERENCES contas_crediario(id)');
  // Inserção única dos produtos que já existiam no site.
  if (!db.prepare("SELECT 1 FROM configuracao WHERE chave='produtos_iniciais'").get()) {

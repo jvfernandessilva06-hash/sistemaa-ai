@@ -161,8 +161,8 @@ function resumoCaixa(c) {
   dinheiroEsperado:reais(esperado), contado:contado == null ? null : reais(contado), diferenca:contado == null ? null : reais(contado - esperado)};
 }
 function movimentosCaixa(caixaId) {
- return db.prepare('SELECT m.*, u.nome AS usuario FROM movimentos_caixa m JOIN usuarios u ON u.id=m.usuario_id WHERE m.caixa_id=? ORDER BY m.id').all(caixaId)
-  .map(m => ({id:m.id, tipo:m.tipo, valor:reais(m.valor_centavos), motivo:m.motivo, dataHora:m.data_hora, usuario:m.usuario}));
+ return db.prepare('SELECT m.*, u.nome AS usuario, a.nome AS autorizado FROM movimentos_caixa m JOIN usuarios u ON u.id=m.usuario_id LEFT JOIN usuarios a ON a.id=m.autorizado_por WHERE m.caixa_id=? ORDER BY m.id').all(caixaId)
+  .map(m => ({id:m.id, tipo:m.tipo, valor:reais(m.valor_centavos), motivo:m.motivo, dataHora:m.data_hora, usuario:m.usuario, autorizadoPor:m.autorizado || null}));
 }
 function caixaPublico(c, admin) {
  if (!c) return null;
@@ -189,6 +189,20 @@ function fecharCaixa(ctx) {
  // O atendente faz a contagem "às cegas": quem confere a diferença é o administrador.
  return {caixa:ctx.usuario.perfil === 'admin' ? caixaPublico(buscarCaixa(c.id), true) : null};
 }
+// Retirada de dinheiro só com a senha de um administrador ativo. Mesmo bloqueio do login contra chutes.
+function adminDaSenha(senha) {
+ const t = tentativas.get(':autorizacao');
+ if (t && t.bloqueadoAte > Date.now()) falha(429,'Muitas senhas erradas. Aguarde 1 minuto e tente de novo.');
+ if (typeof senha !== 'string' || !senha) falha(403,'Digite a senha de um administrador para autorizar a retirada.');
+ const admin = db.prepare("SELECT * FROM usuarios WHERE perfil='admin' AND ativo=1 ORDER BY id").all().find(u => senhaConfere(senha, u.senha_hash));
+ if (!admin) {
+  const falhas = (t?.falhas || 0) + 1;
+  tentativas.set(':autorizacao', falhas >= 5 ? {falhas:0, bloqueadoAte:Date.now()+60000} : {falhas, bloqueadoAte:0});
+  falha(403,'Senha de administrador incorreta.');
+ }
+ tentativas.delete(':autorizacao');
+ return admin;
+}
 // Sangria: dinheiro que sai da gaveta (ex.: pagar fornecedor). Suprimento: dinheiro que entra (ex.: reforço de troco).
 function movimentarCaixa(ctx) {
  const {tipo, valor} = ctx.body;
@@ -198,7 +212,8 @@ function movimentarCaixa(ctx) {
  if (tipo === 'sangria' && !motivo) falha(400,'Informe o motivo da retirada.');
  const c = caixaAberto();
  if (!c) falha(409,'Abra o caixa antes de registrar retiradas ou reforços.');
- db.prepare('INSERT INTO movimentos_caixa (caixa_id,usuario_id,tipo,valor_centavos,motivo) VALUES (?,?,?,?,?)').run(c.id, ctx.usuario.id, tipo, centavos(valor), motivo);
+ const autorizou = tipo === 'sangria' ? adminDaSenha(ctx.body.senhaAdmin) : null;
+ db.prepare('INSERT INTO movimentos_caixa (caixa_id,usuario_id,tipo,valor_centavos,motivo,autorizado_por) VALUES (?,?,?,?,?,?)').run(c.id, ctx.usuario.id, tipo, centavos(valor), motivo, autorizou?.id ?? null);
  ctx.status = 201;
  return {caixa:caixaPublico(caixaAberto(), ctx.usuario.perfil === 'admin')};
 }

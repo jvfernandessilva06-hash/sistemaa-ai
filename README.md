@@ -35,7 +35,7 @@ No cadastro de produtos, marque **"É um adicional"** nos complementos (Nutella,
 
 ## Caixa e crediário
 
-- **Retirada (sangria)** e **reforço (suprimento)** ficam registrados no fechamento e entram no dinheiro esperado.
+- **Retirada (sangria)** e **reforço (suprimento)** ficam registrados no fechamento e entram no dinheiro esperado. A retirada pede a **senha de um administrador** (mesmo com o atendente logado) e o fechamento mostra quem autorizou; o reforço não pede senha.
 - **Crediário:** só para quem está cadastrado na aba Crediário: funcionários (com CPF) e a própria loja (com CNPJ). No pagamento, escolha a conta na lista. A aba mostra quem deve quanto. Ao receber, o valor abate primeiro as compras mais antigas e entra no caixa aberto pela forma de pagamento escolhida.
 - **Itens retirados:** tudo que for removido ou transferido de uma comanda fica registrado (quem, quando, o quê e se já tinha ido para a cozinha). Não pede senha; o administrador consulta no Histórico.
 
