@@ -866,8 +866,8 @@ async function responderApi(req, res, url) {
  json(res,404,{erro:'Endereço não encontrado.'});
 }
 
-const arquivos = {'/':'index.html','/index.html':'index.html','/script.js':'script.js','/style.css':'style.css'};
-const tipos={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'};
+const arquivos = {'/':'index.html','/index.html':'index.html','/script.js':'script.js','/style.css':'style.css','/logo.png':'logo.png'};
+const tipos={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png'};
 const server=http.createServer(async(req,res)=>{
  try {
   if (![`localhost:${port}`,`127.0.0.1:${port}`].includes(req.headers.host)) return json(res,403,{erro:'Acesso permitido apenas neste computador.'});

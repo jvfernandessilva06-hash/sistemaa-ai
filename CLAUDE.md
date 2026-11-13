@@ -32,7 +32,9 @@ Use a skill **triagem-correcao** (avaliar → corrigir → provar). Nada de mexe
 - Pedido da cozinha: só número da comanda, número da comanda que vibra (campo "Vibra nº" ao lado do título; padrão = número da comanda), itens, quantidades, adicionais e observações (sem loja, preço, hora ou atendente).
 - **Adicionais são opcionais**: só abrem pelo botão "Adicionais" do item, nunca sozinhos.
 - **Crediário só para contas cadastradas**: funcionários (CPF) e a própria loja (CNPJ).
-- A frente de caixa precisa mostrar **as 50 comandas sem rolar** num notebook (1366×650). O dono achou a versão maior "grande demais".
+- A frente de caixa precisa mostrar **as 50 comandas sem rolar** num notebook (1366×650), 10 × 5. O dono achou "grande demais" tanto a versão maior quanto a de 6 colunas com rolagem (13/11/2026).
+- **Visual ≠ tamanho:** mudanças de visual mexem só em cores e formatos; tamanhos de letra, espaços e medidas ficam como estão (base 14px). Nenhuma tela deve precisar rolar no notebook, e a barra de cima fica numa linha só (Configurações é só a engrenagem).
+- Visual do designer (telas de 13/11/2026): fundo roxo com cachos de açaí, cartões roxo-escuro, verde para ações, laranja para sair/cancelar/remover, títulos e botões em caixa alta; janelas verdes com painéis brancos. Logo oficial em `logo.png` (fundo transparente); o fundo é SVG em `--desenho` no `style.css`. Telas novas seguem esse padrão.
 - Sem atalhos de produto no topo da comanda; a busca inteligente resolve.
 - **Estoque e delivery estão fora do sistema.**
 

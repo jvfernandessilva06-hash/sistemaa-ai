@@ -61,7 +61,7 @@ Em **Configurações → Impressoras** (administrador) configure a impressora da
 
 Ao lado do número da comanda fica o campo **Vibra nº**, que já vem com o mesmo número; se a comanda que vibra entregue ao cliente tiver outro número, troque ali. É esse número que sai na cozinha para chamar o cliente.
 
-Na comanda, **Enviar para a cozinha** imprime só os itens marcados para a cozinha que ainda não foram enviados. O pedido da cozinha traz apenas o número da comanda, o número da comanda que vibra, os itens, as quantidades e as observações. O comprovante pode ser impresso depois do pagamento (sempre, perguntando ou nunca) e reimpresso pelo Histórico.
+Na comanda, **Imprimir** imprime só os itens marcados para a cozinha que ainda não foram enviados. O pedido da cozinha traz apenas o número da comanda, o número da comanda que vibra, os itens, as quantidades e as observações. O comprovante pode ser impresso depois do pagamento (sempre, perguntando ou nunca) e reimpresso pelo Histórico.
 
 - **Procurar na rede:** acha sozinho as impressoras de rede (porta 9100) no mesmo Wi-Fi do computador.
 - **Tamanho da letra** dos itens da cozinha: normal, grande ou extra grande.

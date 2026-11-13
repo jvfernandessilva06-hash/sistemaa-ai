@@ -11,6 +11,7 @@
     <!-- TELA 0: LOGIN / PRIMEIRO ACESSO -->
     <main id="screen-login" class="screen active">
         <div class="login-card">
+            <div class="logo logo-login" role="img" aria-label="Delícias Açaí"></div>
             <h1>Sistema Açaí PDV</h1>
             <form id="form-login" onsubmit="event.preventDefault(); fazerLogin()">
                 <p>Entre com seu usuário para continuar.</p>
@@ -35,7 +36,7 @@
     <div id="screen-app" class="screen">
         <header class="navbar">
             <button type="button" class="navbar-brand" onclick="trocarAba('pdv')" title="Ir para a frente de caixa">
-                Açaí PDV <span id="status-caixa-badge" class="badge-caixa">Caixa fechado</span>
+                <span class="logo logo-nav" role="img" aria-label="Açaí PDV"></span> <span id="status-caixa-badge" class="badge-caixa">Caixa fechado</span>
             </button>
             <nav aria-label="Menu principal">
                 <ul class="navbar-menu">
@@ -46,10 +47,10 @@
                     <li class="so-admin"><button type="button" id="nav-relatorios" onclick="trocarAba('relatorios')">Relatórios</button></li>
                     <li class="so-admin"><button type="button" id="nav-cardapio" onclick="trocarAba('cardapio')">Produtos</button></li>
                     <li class="so-admin"><button type="button" id="nav-usuarios" onclick="trocarAba('usuarios')">Usuários</button></li>
-                    <li class="so-admin"><button type="button" id="nav-impressoras" onclick="trocarAba('impressoras')">Configurações</button></li>
+                    <li class="so-admin"><button type="button" id="nav-impressoras" class="nav-icone" onclick="trocarAba('impressoras')" aria-label="Configurações" title="Configurações"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.6 7.6 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 0-.5.4l-.4 2.7a7.6 7.6 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5c.1.2.4.3.6.2l2.5-1c.5.4 1.1.7 1.7 1l.4 2.7c0 .2.3.4.5.4h4c.2 0 .5-.2.5-.4l.4-2.7c.6-.3 1.2-.6 1.7-1l2.5 1c.2.1.5 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></button></li>
                 </ul>
             </nav>
-            <div class="navbar-user"><button id="fila-badge" class="fila-badge" type="button" hidden onclick="abrirFila()"></button><span id="usuario-nome"></span><button class="btn btn-secondary btn-sm" type="button" onclick="sair()">Sair</button></div>
+            <div class="navbar-user"><button id="fila-badge" class="fila-badge" type="button" hidden onclick="abrirFila()"></button><button class="btn btn-sair btn-sm" type="button" onclick="sair()">Sair</button></div>
         </header>
 
         <main class="app-container">
@@ -63,9 +64,13 @@
                     <h2 class="grid-header">Comandas (1 a 50)</h2>
                     <div class="comandas-grid" id="comandas-grid"></div>
                 </div>
-                <aside class="sidebar-right" aria-label="Últimas vendas">
-                    <h2 class="panel-header">Últimas vendas</h2>
-                    <div class="panel-content"><ul class="item-list" id="lista-pagas"></ul></div>
+                <aside class="sidebar-right" aria-label="Usuário e últimas vendas">
+                    <div class="logo logo-lateral" role="img" aria-label="Delícias Açaí"></div>
+                    <p id="usuario-nome" class="usuario-nome"></p>
+                    <section class="ultimas-vendas" aria-labelledby="titulo-ultimas">
+                        <h2 id="titulo-ultimas" class="panel-header">Últimas vendas</h2>
+                        <div class="panel-content"><ul class="item-list" id="lista-pagas"></ul></div>
+                    </section>
                 </aside>
             </section>
 
@@ -73,8 +78,8 @@
             <section id="view-historico" class="view-section" aria-labelledby="titulo-historico"><div class="view-content-box">
                 <h2 id="titulo-historico">Histórico de Vendas</h2><p id="historico-descricao" class="field-help"></p>
                 <form class="filtros so-admin" onsubmit="event.preventDefault(); renderizarHistorico()">
-                    <label>De <input type="date" id="historico-inicio"></label>
-                    <label>Até <input type="date" id="historico-fim"></label>
+                    <label>De: <input type="date" id="historico-inicio"></label>
+                    <label>Até: <input type="date" id="historico-fim"></label>
                     <button class="btn btn-primary" type="submit">Buscar</button>
                 </form>
                 <div id="historico-list" class="bloco"></div>
@@ -218,7 +223,7 @@
 
     <!-- MODAL: DETALHES DA COMANDA -->
     <div class="modal-overlay" id="modal-comanda" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
-        <div class="modal-container">
+        <div class="modal-container modal-comanda">
             <div class="modal-header">
                 <div class="modal-titulo-grupo">
                     <h2 id="modal-titulo">Comanda #00</h2>
@@ -230,13 +235,13 @@
             </div>
             <div class="modal-body">
                 <div class="add-item-box">
-                    <input type="text" id="input-item-modal" placeholder="Buscar produto pelo nome ou código" autocomplete="off" aria-label="Buscar produto na comanda" role="combobox" aria-expanded="false" aria-controls="busca-produtos-resultados" aria-autocomplete="list" oninput="pesquisarProdutosComanda()">
-                    <button class="btn btn-primary" type="button" onclick="adicionarItemPorPesquisa()">+ Adicionar</button>
+                    <input type="text" id="input-item-modal" class="campo-busca" placeholder="Buscar produto pelo nome ou código" autocomplete="off" aria-label="Buscar produto na comanda" role="combobox" aria-expanded="false" aria-controls="busca-produtos-resultados" aria-autocomplete="list" oninput="pesquisarProdutosComanda()">
+                    <button class="btn btn-primary btn-adicionar" type="button" onclick="adicionarItemPorPesquisa()">Adicionar</button>
                 </div>
 
                 <div id="busca-produtos-resultados" class="search-results" role="listbox" hidden aria-label="Produtos encontrados"></div>
                 <p id="busca-produtos-status" class="field-help" role="status" hidden></p>
-                <div class="table-scroll">
+                <div class="table-scroll itens-comanda">
                     <table class="table-items tabela-comanda">
                         <thead>
                             <tr>
@@ -260,11 +265,10 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button class="btn btn-pay" type="button" onclick="receberComandaAtual()">Efetuar pagamento</button>
-                    <button class="btn btn-secondary" type="button" onclick="imprimirCozinha()">Enviar para a cozinha</button>
+                    <button class="btn btn-pay" type="button" onclick="receberComandaAtual()">Receber</button>
+                    <button class="btn btn-secondary" type="button" onclick="imprimirCozinha()" title="Enviar os itens para a cozinha">Imprimir</button>
                     <button class="btn btn-secondary" type="button" onclick="abrirTransferencia()">Transferir itens</button>
                     <button class="btn btn-secondary" type="button" onclick="adiantarValor()">Adiantar</button>
-                    <button class="btn btn-secondary" type="button" onclick="fecharModal()">Sair</button>
                 </div>
             </div>
         </div>

@@ -160,7 +160,7 @@ async function sair() {
 async function entrar(u) {
     usuario = u;
     document.body.dataset.perfil = u.perfil;
-    document.getElementById('usuario-nome').textContent = `${u.nome} · ${u.perfil === 'admin' ? 'Administrador' : 'Atendente'}`;
+    document.getElementById('usuario-nome').textContent = `${u.nome}: ${u.perfil === 'admin' ? 'Administrador' : 'Atendente'}`;
     mostrarTela('screen-app');
     trocarAba('pdv');
     await Promise.all([carregarProdutos(), carregarComandas(), carregarCaixa(), carregarVendas(), carregarImpressoras(), atualizarFila(), carregarCrediario()]);
@@ -175,7 +175,8 @@ async function carregarCaixa() {
 
 function atualizarBadgeCaixa() {
     const badge = document.getElementById('status-caixa-badge');
-    badge.innerText = caixaAtual ? `Caixa aberto · ${caixaAtual.operador}` : 'Caixa fechado';
+    badge.innerText = caixaAtual ? 'Caixa aberto' : 'Caixa fechado';
+    badge.title = caixaAtual ? `Aberto por ${caixaAtual.operador}` : '';
     badge.classList.toggle('open', !!caixaAtual);
 }
 
@@ -378,11 +379,10 @@ function renderizarGrid() {
         card.setAttribute('aria-label', `Comanda ${i}, ${estaAberta ? formatarMoeda(fin.total) : 'livre'}${pendentes ? `, ${pendentes} item(ns) para enviar à cozinha` : ''}`);
         card.className = `comanda-card ${estaAberta ? 'comanda-ocupada' : 'comanda-livre'} ${pendentes ? 'has-pending' : ''}`;
         card.onclick = () => abrirModalComanda(i);
-        card.innerHTML = `
-            <span class="numero">${i.toString().padStart(2, '0')}</span>
-            <span class="valor">${estaAberta ? formatarMoeda(fin.total) : 'Livre'}</span>
-            ${pendentes ? '<span class="pendente-cozinha" aria-hidden="true">Cozinha</span>' : ''}
-        `;
+        if (pendentes) card.title = 'Tem item para enviar à cozinha';
+        card.innerHTML = estaAberta
+            ? `<span class="bolso"><span class="numero">${i}</span><span class="valor">${formatarMoeda(fin.total).replace(/\s/g, '')}</span>${pendentes ? '<span class="pendente-cozinha" aria-hidden="true">Pendente</span>' : ''}</span>`
+            : `<span class="numero">${i}</span><span class="mais" aria-hidden="true"></span>`;
         container.appendChild(card);
     }
 }
@@ -397,7 +397,7 @@ function renderizarPagas() {
         li.className = 'item-card pago';
         li.innerHTML = `
             <div class="info-comanda">
-                <span class="titulo">Comanda #${item.comanda.toString().padStart(2, '0')}</span>
+                <span class="titulo">Comanda ${item.comanda}</span>
                 <span class="subtext">${item.status === 'Pago' ? 'Pago' : 'Crediário'} às ${escaparHtml(item.dataHora.slice(11, 16))}</span>
             </div>
             <span class="valor-destaque">${formatarMoeda(item.valor)}</span>
@@ -412,14 +412,14 @@ function abrirModalComanda(numero) {
     comandaSelecionada = numero;
     const c = comandas[numero];
 
-    document.getElementById('modal-titulo').innerText = `Comanda #${numero.toString().padStart(2, '0')}`;
+    document.getElementById('modal-titulo').innerText = `Comanda ${numero}`;
     document.getElementById('modal-vibra').value = c.vibra || numero;
 
     const tbody = document.getElementById('modal-tabela-itens');
     tbody.innerHTML = '';
 
     if (c.itens.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="vazio">Nenhum item. Busque um produto acima ou use os atalhos.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="vazio">Nenhum item. Busque um produto acima.</td></tr>`;
     } else {
         c.itens.forEach((item, index) => {
             let statusCozinhaHtml = '<span class="status-badge badge-no-kitchen">Não vai</span>';
@@ -437,17 +437,17 @@ function abrirModalComanda(numero) {
                     ${adicionais.length ? `<span class="item-adicionais">${adicionais.map(a => `+ ${a.qtd > 1 ? a.qtd + 'x ' : ''}${escaparHtml(a.nome)}`).join(', ')}</span>` : ''}
                     ${item.obs ? `<span class="item-obs">Obs: ${escaparHtml(item.obs)}</span>` : ''}
                     <span class="item-acoes">
-                        <button class="btn btn-secondary btn-sm" type="button" onclick="adicionarObservacao(${index})" aria-label="Observação de ${nome}">Obs</button>
-                        ${item.aceitaAdicionais || adicionais.length ? `<button class="btn btn-secondary btn-sm" type="button" onclick="abrirAdicionais(${index})" aria-label="Adicionais de ${nome}">Adicionais</button>` : ''}
+                        <button class="btn btn-tag" type="button" onclick="adicionarObservacao(${index})" aria-label="Observação de ${nome}">Obs</button>
+                        ${item.aceitaAdicionais || adicionais.length ? `<button class="btn btn-tag" type="button" onclick="abrirAdicionais(${index})" aria-label="Adicionais de ${nome}">Adicionais</button>` : ''}
                     </span>
                 </td>
                 <td>
-                    <span class="qtd-celula"><input class="item-quantity" aria-label="Quantidade de ${nome}" type="number" min="${item.unidade === 'KG' ? '0.001' : '1'}" step="${item.unidade === 'KG' ? '0.001' : '1'}" value="${item.qtd}" onchange="definirQuantidadeItem(${index}, this.value)"><small>${item.unidade === 'KG' ? 'kg' : 'un'}</small></span>
+                    <span class="qtd-celula"><input class="item-quantity" aria-label="Quantidade de ${nome}" type="number" min="${item.unidade === 'KG' ? '0.001' : '1'}" step="${item.unidade === 'KG' ? '0.001' : '1'}" value="${item.qtd}" onchange="definirQuantidadeItem(${index}, this.value)"><span class="unidade">${item.unidade === 'KG' ? 'Kg' : 'Un'}</span></span>
                 </td>
-                <td class="num">${formatarMoeda(item.preco)}<small> / ${(item.unidade || 'UN').toLowerCase()}</small></td>
-                <td class="num">${formatarMoeda(totalItemCentavos(item) / 100)}</td>
+                <td class="num">${formatarMoeda(item.preco).replace(/\s/g, '')}/${item.unidade === 'KG' ? 'Kg' : 'Un'}</td>
+                <td class="num">${formatarMoeda(totalItemCentavos(item) / 100).replace(/\s/g, '')}</td>
                 <td>${statusCozinhaHtml}</td>
-                <td><button class="btn btn-remover" type="button" onclick="removerItem(${index})" aria-label="Remover ${nome}" title="Remover">&times;</button></td>
+                <td><button class="btn btn-remover" type="button" onclick="removerItem(${index})" aria-label="Remover ${nome}" title="Remover">X</button></td>
             `;
             tbody.appendChild(tr);
         });
@@ -981,9 +981,9 @@ async function renderizarHistorico() {
     try { vendas = await api('/api/vendas' + (ehAdmin() ? `?inicio=${inicio.value}&fim=${fim.value}` : '')); }
     catch (e) { box.textContent = e.message; return; }
     if (!vendas.length) { box.textContent = 'Nenhuma venda registrada.'; return; }
-    box.innerHTML = '<div class="table-scroll"><table class="table-items"><thead><tr><th>Comanda</th><th>Data / hora</th><th>Atendente</th><th>Itens</th><th>Pagamento</th><th class="num">Desconto</th><th class="num">Valor</th><th>Status</th><th></th></tr></thead><tbody>' +
+    box.innerHTML = '<div class="table-scroll"><table class="table-items tabela-separada"><thead><tr><th>Comanda</th><th>Data / hora</th><th>Atendente</th><th>Itens</th><th>Pagamento</th><th class="num">Desconto</th><th class="num">Valor</th><th>Status</th><th></th></tr></thead><tbody>' +
         vendas.map(v => `<tr class="${v.cancelada ? 'venda-cancelada' : ''}">
-            <td>#${v.comanda}</td>
+            <td>${v.comanda}</td>
             <td>${formatarDataHora(v.dataHora)}</td>
             <td>${escaparHtml(v.atendente)}</td>
             <td><small>${v.itens.map(i => `${i.qtd}${i.unidade === 'KG' ? ' kg' : 'x'} ${escaparHtml(i.nome)}${(i.adicionais || []).length ? ` (+ ${i.adicionais.map(a => escaparHtml(a.nome)).join(', ')})` : ''}`).join('<br>')}</small></td>
@@ -991,7 +991,7 @@ async function renderizarHistorico() {
             <td class="num">${formatarMoeda(v.desconto)}</td>
             <td class="num">${formatarMoeda(v.valor)}</td>
             <td class="status-venda">${v.cancelada ? `Cancelada<br><small>${escaparHtml(v.motivoCancelamento)}</small>` : escaparHtml(v.status)}</td>
-            <td class="acoes-venda">${v.cancelada ? '' : `<button class="btn btn-secondary btn-sm" type="button" onclick="reimprimirVenda(${v.id})" aria-label="Imprimir comprovante da comanda ${v.comanda}">Imprimir</button>`}${ehAdmin() && !v.cancelada ? ` <button class="btn btn-danger btn-sm" type="button" onclick="cancelarVenda(${v.id})" aria-label="Cancelar venda da comanda ${v.comanda}">Cancelar</button>` : ''}</td>
+            <td class="acoes-venda">${v.cancelada ? '' : `<button class="btn btn-primary btn-sm" type="button" onclick="reimprimirVenda(${v.id})" aria-label="Imprimir comprovante da comanda ${v.comanda}">Imprimir</button>`}${ehAdmin() && !v.cancelada ? ` <button class="btn btn-danger btn-sm" type="button" onclick="cancelarVenda(${v.id})" aria-label="Cancelar venda da comanda ${v.comanda}">Cancelar</button>` : ''}</td>
         </tr>`).join('') + '</tbody></table></div>';
     vendasHistorico = vendas;
 }
